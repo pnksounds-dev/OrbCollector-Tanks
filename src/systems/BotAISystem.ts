@@ -69,6 +69,17 @@ export interface BotAIComponent {
   preferredRange: number;
   /** Random personality offset for formation positioning (0..1). */
   formationOffset: number;
+  // ---- Smooth steering state ----
+  /** Current wander angle (drifts smoothly via noise). */
+  wanderAngle: number;
+  /** Current desired velocity X (accelerated toward, not instant). */
+  desiredVx: number;
+  /** Current desired velocity Y. */
+  desiredVy: number;
+  /** Aim jitter phase (for human-like imprecision). */
+  aimJitterPhase: number;
+  /** Aim tracking speed (varies per bot for personality). */
+  aimSpeed: number;
 }
 
 // ---- Name / color pools ----
@@ -176,21 +187,37 @@ const FLEE_RECOVER_RATIO = 0.7;
 const FIRE_RANGE = 650;
 const LOD_DISTANCE = 1800;
 const RETARGET_INTERVAL = 0.6;
-const AIM_LERP_RATE = 10;
 
-// Shape collision avoidance
-const SHAPE_AVOID_RANGE = 80;
-const SHAPE_AVOID_FORCE = 1.5;
+// ---- Smooth steering parameters ----
 
-// Bot separation
-const SEPARATION_RANGE = 70;
-const SEPARATION_FORCE = 1.2;
-
-// Base awareness
-const ENEMY_BASE_AVOID_RANGE = 600;
+/** How fast velocity accelerates toward desired velocity (0..1 per frame, scaled by dt). */
+const ACCEL_RATE = 4.0;
+/** How fast velocity decelerates when no steering input (friction). */
+const DECEL_RATE = 2.5;
+/** Wander: how much random heading drift to apply (rad/s). */
+const WANDER_RATE = 0.8;
+/** Wander: maximum angle offset from desired heading. */
+const WANDER_MAX_OFFSET = 0.35;
+/** Arrive: start decelerating within this distance of target. */
+const ARRIVE_RANGE = 250;
+/** Arrive: minimum speed factor when at target (0 = full stop). */
+const ARRIVE_MIN_SPEED = 0.15;
+/** Predictive avoidance: how far ahead to look (in seconds of travel). */
+const AVOID_LOOK_AHEAD = 1.2;
+/** Predictive avoidance: steering force magnitude. */
+const AVOID_FORCE = 3.0;
+/** Bot separation: range beyond body radii. */
+const SEPARATION_RANGE = 50;
+/** Bot separation: steering force magnitude. */
+const SEPARATION_FORCE = 2.0;
+/** Enemy base avoidance range beyond base radius. */
+const ENEMY_BASE_AVOID_RANGE = 500;
+/** Own base heal range. */
 const OWN_BASE_HEAL_RANGE = 400;
-
-// Formation spacing is handled via per-bot formationOffset (0..1 random)
+/** Aim jitter amplitude (radians) — human-like imprecision. */
+const AIM_JITTER_AMP = 0.04;
+/** Aim jitter frequency. */
+const AIM_JITTER_FREQ = 3.0;
 
 // ---- Factory ----
 
@@ -261,6 +288,11 @@ export function createBotEntity(
     name, color,
     preferredRange: profile.range,
     formationOffset: Math.random(),
+    wanderAngle: Math.random() * Math.PI * 2,
+    desiredVx: 0,
+    desiredVy: 0,
+    aimJitterPhase: Math.random() * Math.PI * 2,
+    aimSpeed: 6 + Math.random() * 6, // 6–12 rad/s tracking speed
   });
   return id;
 }
@@ -287,7 +319,9 @@ export class BotAISystem {
   private shapeIds: EntityId[] = [];
   private tankIds: EntityId[] = [];
   private botIds: EntityId[] = [];
-  private currentSteerAngle = 0;
+  /** Desired velocity for the bot currently being processed (stashed for applyMovement). */
+  private desiredVx = 0;
+  private desiredVy = 0;
 
   update(world: ECWorld, dt: number, playerId: EntityId): void {
     this.botIds = world.query(C.Position, C.Tank, BOT, BOT_AI);
@@ -315,10 +349,13 @@ export class BotAISystem {
       const py = playerPos ? playerPos.y : CONFIG.worldHalf * 2;
       const distToPlayer = dist(pos.x, pos.y, px, py);
 
-      this.currentSteerAngle = ai.steerAngle;
-
-      // LOD: far bots just drift
+      // LOD: far bots use simplified steering (wander only, no expensive queries)
       if (distToPlayer > LOD_DISTANCE) {
+        // Gentle wander for far bots — they drift organically
+        ai.wanderAngle += (Math.random() - 0.5) * WANDER_RATE * dt;
+        const maxSpeed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
+        this.desiredVx = Math.cos(ai.wanderAngle) * maxSpeed * 0.4;
+        this.desiredVy = Math.sin(ai.wanderAngle) * maxSpeed * 0.4;
         this.applyMovement(pos, vel, tank, dt, world, botId);
         continue;
       }
@@ -333,15 +370,16 @@ export class BotAISystem {
         ai.steerAngle = angleTo(pos.x, pos.y, ai.targetX, ai.targetY);
       }
 
-      // Apply steering corrections (shape avoidance, separation, base avoidance)
-      this.applySteeringCorrections(world, botId, pos, tank, ai, dt);
+      // Compute desired velocity (seek + wander + avoidance + separation + base avoid)
+      const desired = this.computeDesiredVelocity(world, botId, pos, vel, tank, ai, dt);
+      this.desiredVx = desired.dx;
+      this.desiredVy = desired.dy;
 
       // Aim & fire
-      this.currentSteerAngle = ai.steerAngle;
       this.aim(pos, ai, dt);
       this.handleFiring(world, botId, pos, tank, ai);
 
-      // Movement
+      // Movement — acceleration-based, smooth
       this.applyMovement(pos, vel, tank, dt, world, botId);
     }
   }
@@ -658,46 +696,120 @@ export class BotAISystem {
     return best;
   }
 
-  // ---- Steering corrections ----
+  // ---- Smooth steering engine ----
+  //
+  // Professional steering behavior pipeline:
+  // 1. Compute a DESIRED velocity from the behavior (seek/arrive/flee)
+  // 2. Add wander noise (smooth organic drift, not random snapping)
+  // 3. Add predictive obstacle avoidance (ray-cast ahead, steer around)
+  // 4. Add separation (push away from nearby allies)
+  // 5. Add enemy base avoidance
+  // 6. Accelerate current velocity toward desired velocity (no instant snaps)
+  // 7. Apply velocity to position with wall clamping
 
-  /** Apply collision avoidance and separation steering. */
-  private applySteeringCorrections(
+  /** Compute the blended desired velocity for this bot this frame. */
+  private computeDesiredVelocity(
     world: ECWorld,
     botId: EntityId,
     pos: PositionComponent,
+    vel: VelocityComponent,
     tank: TankComponent,
     ai: BotAIComponent,
-    _dt: number,
-  ): void {
-    let steerX = Math.cos(ai.steerAngle);
-    let steerY = Math.sin(ai.steerAngle);
+    dt: number,
+  ): { dx: number; dy: number } {
+    const maxSpeed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
+    const myTeam = world.getComponent<TeamComponent>(botId, C.Team);
+    const myTeamId = myTeam ? myTeam.id : -1;
 
-    // 1. Shape collision avoidance — steer away from nearby shapes
-    for (const sid of this.shapeIds) {
-      const s = world.getComponent<PositionComponent>(sid, C.Position);
-      const shape = world.getComponent<ShapeComponent>(sid, C.Shape);
-      if (!s || !shape) continue;
-      const dx = pos.x - s.x;
-      const dy = pos.y - s.y;
-      const d = Math.hypot(dx, dy);
-      const avoidDist = SHAPE_AVOID_RANGE + shape.radius;
-      if (d < avoidDist && d > 0.1) {
-        // Push away from shape
-        const force = (1 - d / avoidDist) * SHAPE_AVOID_FORCE;
-        steerX += (dx / d) * force;
-        steerY += (dy / d) * force;
+    // --- 1. Base desired velocity: seek or arrive at target ---
+    const toTargetX = ai.targetX - pos.x;
+    const toTargetY = ai.targetY - pos.y;
+    const targetDist = Math.hypot(toTargetX, toTargetY);
+
+    let speedFactor = 1.0;
+    // Arrive behavior: decelerate when approaching target (unless fleeing or ramming)
+    if (ai.behavior !== "fleeing" && ai.role !== "rammer" && targetDist < ARRIVE_RANGE) {
+      speedFactor = clamp(targetDist / ARRIVE_RANGE, ARRIVE_MIN_SPEED, 1.0);
+    }
+
+    let desX = 0;
+    let desY = 0;
+    if (targetDist > 1) {
+      desX = (toTargetX / targetDist) * maxSpeed * speedFactor;
+      desY = (toTargetY / targetDist) * maxSpeed * speedFactor;
+    }
+
+    // --- 2. Wander: smooth organic heading drift ---
+    // Advance the wander angle with smooth noise (not random snapping)
+    ai.wanderAngle += (Math.random() - 0.5) * WANDER_RATE * dt;
+    // Clamp wander angle drift
+    const wanderDx = Math.cos(ai.wanderAngle) * WANDER_MAX_OFFSET;
+    const wanderDy = Math.sin(ai.wanderAngle) * WANDER_MAX_OFFSET;
+    // Apply wander as a small perturbation to the desired direction
+    if (targetDist > 1) {
+      const wanderForce = maxSpeed * 0.15;
+      desX += wanderDx * wanderForce;
+      desY += wanderDy * wanderForce;
+    } else {
+      // At target — use wander for gentle drift
+      desX = Math.cos(ai.wanderAngle) * maxSpeed * 0.3;
+      desY = Math.sin(ai.wanderAngle) * maxSpeed * 0.3;
+    }
+
+    // --- 3. Predictive obstacle avoidance ---
+    // Cast a ray ahead along current velocity; if a shape is in the path, steer around it
+    const velMag = Math.hypot(vel.vx, vel.vy);
+    if (velMag > 10) {
+      const lookAhead = AVOID_LOOK_AHEAD; // seconds
+      const aheadX = pos.x + vel.vx * lookAhead;
+      const aheadY = pos.y + vel.vy * lookAhead;
+      let avoidX = 0;
+      let avoidY = 0;
+      let avoidStrength = 0;
+
+      for (const sid of this.shapeIds) {
+        const s = world.getComponent<PositionComponent>(sid, C.Position);
+        const shape = world.getComponent<ShapeComponent>(sid, C.Shape);
+        if (!s || !shape) continue;
+        // Distance from shape to the look-ahead ray segment
+        const distToAhead = this.pointToSegmentDist(s.x, s.y, pos.x, pos.y, aheadX, aheadY);
+        const collisionRadius = shape.radius + tank.bodyRadius + 20;
+        if (distToAhead < collisionRadius) {
+          // Also check actual proximity
+          const dx = s.x - pos.x;
+          const dy = s.y - pos.y;
+          const d = Math.hypot(dx, dy);
+          const proxRange = collisionRadius + 100;
+          if (d < proxRange) {
+            // Steer perpendicular to the obstacle direction
+            const awayX = pos.x - s.x;
+            const awayY = pos.y - s.y;
+            const awayDist = Math.hypot(awayX, awayY);
+            if (awayDist > 0.1) {
+              const force = (1 - d / proxRange) * AVOID_FORCE;
+              avoidX += (awayX / awayDist) * force;
+              avoidY += (awayY / awayDist) * force;
+              avoidStrength = Math.max(avoidStrength, force);
+            }
+          }
+        }
+      }
+
+      if (avoidStrength > 0) {
+        const avoidMag = Math.hypot(avoidX, avoidY);
+        if (avoidMag > 0.01) {
+          desX += (avoidX / avoidMag) * maxSpeed * Math.min(avoidStrength, 1.0);
+          desY += (avoidY / avoidMag) * maxSpeed * Math.min(avoidStrength, 1.0);
+        }
       }
     }
 
-    // 2. Bot separation — steer away from nearby allies
-    const myTeam = world.getComponent<TeamComponent>(botId, C.Team);
-    const myTeamId = myTeam ? myTeam.id : -1;
+    // --- 4. Separation: push away from nearby allies ---
     for (const otherId of this.botIds) {
       if (otherId === botId) continue;
       const otherPos = world.getComponent<PositionComponent>(otherId, C.Position);
       const otherTank = world.getComponent<TankComponent>(otherId, C.Tank);
       if (!otherPos || !otherTank) continue;
-      // Only separate from allies (enemies we want to approach)
       const otherTeam = world.getComponent<TeamComponent>(otherId, C.Team);
       const otherTeamId = otherTeam ? otherTeam.id : -1;
       if (myTeamId >= 0 && otherTeamId >= 0 && myTeamId !== otherTeamId) continue;
@@ -708,12 +820,12 @@ export class BotAISystem {
       const sepDist = SEPARATION_RANGE + tank.bodyRadius + otherTank.bodyRadius;
       if (d < sepDist && d > 0.1) {
         const force = (1 - d / sepDist) * SEPARATION_FORCE;
-        steerX += (dx / d) * force;
-        steerY += (dy / d) * force;
+        desX += (dx / d) * maxSpeed * force;
+        desY += (dy / d) * maxSpeed * force;
       }
     }
 
-    // 3. Enemy base avoidance — steer away from enemy bases
+    // --- 5. Enemy base avoidance ---
     if (myTeamId >= 0) {
       for (let ti = 0; ti < teamBases.length; ti++) {
         if (ti === myTeamId) continue;
@@ -723,26 +835,39 @@ export class BotAISystem {
         const d = Math.hypot(dx, dy);
         const avoidDist = base.radius + ENEMY_BASE_AVOID_RANGE;
         if (d < avoidDist && d > 0.1) {
-          const force = (1 - d / avoidDist) * 2.0;
-          steerX += (dx / d) * force;
-          steerY += (dy / d) * force;
+          const force = (1 - d / avoidDist) * 2.5;
+          desX += (dx / d) * maxSpeed * force;
+          desY += (dy / d) * maxSpeed * force;
         }
       }
     }
 
-    // Normalize the steering vector back to a unit vector
-    const mag = Math.hypot(steerX, steerY);
-    if (mag > 0.01) {
-      ai.steerAngle = Math.atan2(steerY, steerX);
-    }
+    return { dx: desX, dy: desY };
+  }
+
+  /** Distance from point (px,py) to line segment (ax,ay)-(bx,by). */
+  private pointToSegmentDist(px: number, py: number, ax: number, ay: number, bx: number, by: number): number {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const lenSq = dx * dx + dy * dy;
+    if (lenSq < 0.001) return Math.hypot(px - ax, py - ay);
+    let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
+    t = clamp(t, 0, 1);
+    const cx = ax + t * dx;
+    const cy = ay + t * dy;
+    return Math.hypot(px - cx, py - cy);
   }
 
   // ---- Per-bot subsystems ----
 
+  /** Human-like aim: smooth tracking with slight jitter for imprecision. */
   private aim(pos: PositionComponent, ai: BotAIComponent, dt: number): void {
     const desired = angleTo(pos.x, pos.y, ai.targetX, ai.targetY);
-    const t = clamp(AIM_LERP_RATE * dt, 0, 1);
-    pos.angle = lerpAngle(pos.angle, desired, t);
+    // Add subtle jitter — humans don't track perfectly
+    ai.aimJitterPhase += AIM_JITTER_FREQ * dt;
+    const jitter = Math.sin(ai.aimJitterPhase + ai.formationOffset * 7) * AIM_JITTER_AMP;
+    const t = clamp(ai.aimSpeed * dt, 0, 1);
+    pos.angle = lerpAngle(pos.angle, desired + jitter, t);
   }
 
   private handleFiring(
@@ -837,7 +962,11 @@ export class BotAISystem {
     }
   }
 
-  /** Apply velocity to position with wall bouncing. */
+  /**
+   * Acceleration-based movement: velocity lerps toward desired velocity,
+   * giving smooth starts, stops, and turns — no instant direction snaps.
+   * Position is updated from the smoothed velocity, with wall clamping.
+   */
   private applyMovement(
     pos: PositionComponent,
     vel: VelocityComponent,
@@ -846,34 +975,55 @@ export class BotAISystem {
     _world: ECWorld,
     _botId: EntityId,
   ): void {
-    const speed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
-    vel.vx = Math.cos(this.currentSteerAngle) * speed;
-    vel.vy = Math.sin(this.currentSteerAngle) * speed;
+    // Accelerate current velocity toward desired velocity
+    const desVx = this.desiredVx;
+    const desVy = this.desiredVy;
+    const dvx = desVx - vel.vx;
+    const dvy = desVy - vel.vy;
+    const dvMag = Math.hypot(dvx, dvy);
 
+    if (dvMag > 1) {
+      // Accelerating toward desired
+      const accel = ACCEL_RATE * dt;
+      vel.vx += dvx * Math.min(accel, 1);
+      vel.vy += dvy * Math.min(accel, 1);
+    } else {
+      // Near target velocity — apply gentle friction for stability
+      const decel = DECEL_RATE * dt;
+      vel.vx *= 1 - Math.min(decel, 0.1);
+      vel.vy *= 1 - Math.min(decel, 0.1);
+    }
+
+    // Clamp to max speed
+    const maxSpeed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
+    const speed = Math.hypot(vel.vx, vel.vy);
+    if (speed > maxSpeed) {
+      vel.vx = (vel.vx / speed) * maxSpeed;
+      vel.vy = (vel.vy / speed) * maxSpeed;
+    }
+
+    // Update position
     pos.x += vel.vx * dt;
     pos.y += vel.vy * dt;
 
-    // Bounce off arena walls
+    // Wall clamping — smooth bounce by reflecting velocity
     const half = CONFIG.worldHalf;
     const r = tank.bodyRadius;
     if (pos.x < -half + r) {
       pos.x = -half + r;
-      vel.vx = Math.abs(vel.vx);
-      this.currentSteerAngle = normalizeAngle(Math.atan2(vel.vy, vel.vx));
+      vel.vx = Math.abs(vel.vx) * 0.7; // dampened bounce
     } else if (pos.x > half - r) {
       pos.x = half - r;
-      vel.vx = -Math.abs(vel.vx);
-      this.currentSteerAngle = normalizeAngle(Math.atan2(vel.vy, vel.vx));
+      vel.vx = -Math.abs(vel.vx) * 0.7;
     }
     if (pos.y < -half + r) {
       pos.y = -half + r;
-      vel.vy = Math.abs(vel.vy);
-      this.currentSteerAngle = normalizeAngle(Math.atan2(vel.vy, vel.vx));
+      vel.vy = Math.abs(vel.vy) * 0.7;
     } else if (pos.y > half - r) {
       pos.y = half - r;
-      vel.vy = -Math.abs(vel.vy);
-      this.currentSteerAngle = normalizeAngle(Math.atan2(vel.vy, vel.vx));
+      vel.vy = -Math.abs(vel.vy) * 0.7;
     }
+
   }
 }
 
