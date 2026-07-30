@@ -241,10 +241,22 @@ tank-vs-tank combat, a leaderboard, and a start menu.
 - 4teams: 6000 half, 100 bots, 4 teams (25 per team)
 
 ### Team bases (`src/game/Game.ts`)
-- 2 teams: left/right bases at (±half*0.75, 0)
+- 2 teams: **top/bottom** bases at (0, ±half*0.75) — matches diep.io 2TDM layout
 - 4 teams: four corner bases at (±half*0.75, ±half*0.75)
 - Player spawns at their team's base; bots spawn near their team's base
 - `maintainBots` balances bots across teams (spawns on the team with fewest)
+
+### FX sprite effects (Phase 9 — planned, not yet implemented)
+- `assets/FX/` contains sprite sheets for combat/environmental effects:
+  - `explosion/` — tank death explosions + debris, shape death pops
+  - `blood/` — damage splatter particles (tinted by team color)
+  - `bullet_trail/` — faint trail behind traveling bullets
+  - `smoke/` — rising smoke from damaged tanks (< 40% HP)
+  - `shield/` — pulsing spawn invulnerability shield
+  - `phaser/` — bullet impact hit flash
+  - `shipengine/` — movement trail behind fast-moving tanks
+  - `water/` — arena boundary splash on wall hit
+- Plan: `EffectComponent` + `EffectSystem` + Renderer sprite drawing with alpha fade
 
 ### Team-aware AI (`src/systems/BotAISystem.ts`)
 - `createBotEntity` now accepts `teamId` parameter

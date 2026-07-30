@@ -153,15 +153,16 @@ export class Renderer {
     ctx.stroke();
   }
 
-  /** Draw team base zones — semi-transparent colored circles at each team's base. */
+  /** Draw team base zones — semi-transparent colored circles at each team's base.
+   *  2 teams: top and bottom of the world. 4 teams: four corners. */
   private drawTeamBases(teamCount: number): void {
     const ctx = this.ctx;
     const half = CONFIG.worldHalf * 0.75;
     const bases =
       teamCount === 2
         ? [
-            { x: -half, y: 0, color: CONFIG.teams.colors[0] },
-            { x: half, y: 0, color: CONFIG.teams.colors[1] },
+            { x: 0, y: -half, color: CONFIG.teams.colors[0] },
+            { x: 0, y: half, color: CONFIG.teams.colors[1] },
           ]
         : [
             { x: -half, y: -half, color: CONFIG.teams.colors[0] },

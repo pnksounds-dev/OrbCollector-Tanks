@@ -215,12 +215,14 @@ export class Game {
     this.menu.hideDeath();
   }
 
-  /** Get the base position for a team in the given team count. */
+  /** Get the base position for a team in the given team count.
+   *  2 teams: top and bottom of the world (team 0 = top, team 1 = bottom).
+   *  4 teams: four corners (TL, TR, BL, BR). */
   private getTeamBase(teamId: number, teamCount: number): { x: number; y: number } {
     const half = CONFIG.worldHalf * 0.75;
     if (teamCount === 2) {
-      // Left and right
-      return teamId === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
+      // Top and bottom (matches diep.io's 2TDM layout)
+      return teamId === 0 ? { x: 0, y: -half } : { x: 0, y: half };
     }
     if (teamCount === 4) {
       // Four corners

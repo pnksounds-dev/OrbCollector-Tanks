@@ -1185,7 +1185,7 @@ export function maintainBots(
       }
       const half = CONFIG.worldHalf * 0.75;
       const bases = teamCount === 2
-        ? [{ x: -half, y: 0 }, { x: half, y: 0 }]
+        ? [{ x: 0, y: -half }, { x: 0, y: half }]
         : [{ x: -half, y: -half }, { x: half, y: -half }, { x: -half, y: half }, { x: half, y: half }];
       const base = bases[botTeam % bases.length];
       const spread = 400;
@@ -1211,7 +1211,7 @@ export function maintainBots(
       if (teamCount > 0) {
         // Spread home territories around the team's base area
         const base = teamCount === 2
-          ? (botTeam === 0 ? { x: -CONFIG.worldHalf * 0.75, y: 0 } : { x: CONFIG.worldHalf * 0.75, y: 0 })
+          ? (botTeam === 0 ? { x: 0, y: -CONFIG.worldHalf * 0.75 } : { x: 0, y: CONFIG.worldHalf * 0.75 })
           : [{ x: -CONFIG.worldHalf * 0.75, y: -CONFIG.worldHalf * 0.75 }, { x: CONFIG.worldHalf * 0.75, y: -CONFIG.worldHalf * 0.75 }, { x: -CONFIG.worldHalf * 0.75, y: CONFIG.worldHalf * 0.75 }, { x: CONFIG.worldHalf * 0.75, y: CONFIG.worldHalf * 0.75 }][botTeam % 4];
         // Spread in a wide area around the base — each bot gets a unique zone
         const angle = Math.random() * Math.PI * 2;

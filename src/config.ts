@@ -177,9 +177,9 @@ export const CONFIG = {
   teams: {
     /** Team colors (body fill). Index 0 = blue, 1 = red, 2 = green, 3 = purple. */
     colors: ["#00b2e1", "#e14a4a", "#4ae14a", "#9b4ae1"],
-    /** Team base positions for 2-team mode (left/right). */
+    /** Team base radius for 2-team mode (top/bottom of world). */
     baseRadius2: 500,
-    /** Team base positions for 4-team mode (corners). */
+    /** Team base radius for 4-team mode (four corners). */
     baseRadius4: 400,
   },
 

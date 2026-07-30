@@ -338,6 +338,39 @@ diep.io's flat geometric aesthetic. The orb sprites are used only for the kill
 particle burst, giving the game an Orb Collector series flavor without breaking
 the diep.io look.
 
+### 6.1 FX Sprite Effects (Phase 9 — planned)
+
+The `assets/FX/` folder contains sprite sheets that can be used for combat and
+environmental visual effects. These are drawn as short-lived particles on top of
+the procedural canvas rendering, adding visual feedback without changing the
+diep.io aesthetic.
+
+| FX Folder | Sprites | Planned Use |
+|---|---|---|
+| `assets/FX/explosion/` | `Explosion.png`, `Explosion2.png`, `small.png`, `Debris1-3.png` | **Tank death explosion** — burst of explosion sprite + debris particles when a tank's HP hits 0. `small.png` for shape death pop. |
+| `assets/FX/blood/` | `blood_drip1-4.png` | **Tank damage splatter** — small blood drip particles fly off a tank when it takes bullet or body damage. Tinted by team color. |
+| `assets/FX/bullet_trail/` | `bulletTrail1-5.png` | **Bullet trail effect** — faint trail sprite drawn behind each bullet as it travels, fading over ~300ms. Gives bullets a visual streak. |
+| `assets/FX/smoke/` | `smoke1-9.png` | **Damaged tank smoke** — when a tank is below 40% HP, emit slow-rising smoke particles from its body. Intensifies as HP drops lower. |
+| `assets/FX/shield/` | `ShieldDamageEffect.png` | **Spawn invulnerability shield** — pulsing shield sprite drawn around tanks during their spawn invuln period. |
+| `assets/FX/phaser/` | `PhaserHit1-5.png` | **Bullet impact hit** — brief phaser hit sprite at the point where a bullet strikes a tank or shape. Quick flash + fade. |
+| `assets/FX/shipengine/` | `Trail1-5.png` | **Tank movement trail** — faint engine trail particles behind a tank when moving at high speed. Subtle motion feedback. |
+| `assets/FX/water/` | `WaterDroplet1.png` | **Arena boundary splash** — water droplet effect when a tank hits the arena wall. Small splash burst. |
+
+**Implementation plan:**
+1. Add an `EffectComponent` to the ECS (`{ sprite, life, maxLife, vx, vy, scale, rotation, alpha }`)
+2. Add an `EffectSystem` that spawns effect particles on combat events (bullet hit, tank damage, tank death, shape death, wall hit)
+3. Renderer draws effect sprites with alpha fading + scale animation
+4. Effect particles are short-lived (~200ms–800ms) and capped to prevent performance issues
+5. All FX sprites are loaded lazily by the Renderer (like orb sprites already are)
+
+### 6.2 Team base layout (Phase 5 update)
+
+Team bases match diep.io's world layout:
+- **2 teams**: bases at **top and bottom** of the world (team 0 = top, team 1 = bottom), centered on the X axis at `y = ±worldHalf * 0.75`
+- **4 teams**: bases at the **four corners** of the world (TL, TR, BL, BR) at `(±worldHalf * 0.75, ±worldHalf * 0.75)`
+- Bases are drawn as semi-transparent colored circles with team-colored borders
+- Bots spawn near their team's base and retreat to it when wounded
+
 ---
 
 ## 7. Verification
