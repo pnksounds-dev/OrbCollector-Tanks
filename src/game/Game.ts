@@ -27,6 +27,7 @@ import {
   BotAISystem,
   createBotEntity,
   maintainBots,
+  setTeamBases,
 } from "../systems/BotAISystem";
 import { PentagonNest } from "./AlphaPentagon";
 import { getAvailableUpgrades, getClass } from "./TankClasses";
@@ -234,6 +235,22 @@ export class Game {
     return { x: 0, y: 0 };
   }
 
+  /** Update team base info for the bot AI system. */
+  private updateTeamBases(): void {
+    const teamCount = CONFIG.gameModes[this.gameMode].teamCount;
+    if (teamCount <= 0) {
+      setTeamBases([]);
+      return;
+    }
+    const baseRadius = teamCount === 2 ? CONFIG.teams.baseRadius2 : CONFIG.teams.baseRadius4;
+    const bases: { x: number; y: number; radius: number }[] = [];
+    for (let t = 0; t < teamCount; t++) {
+      const pos = this.getTeamBase(t, teamCount);
+      bases.push({ x: pos.x, y: pos.y, radius: baseRadius });
+    }
+    setTeamBases(bases);
+  }
+
   /** Respawn the player after death (reset to level 1). */
   respawn(): void {
     this.startGame(this.gameMode);
@@ -287,6 +304,8 @@ export class Game {
 
     this.movement.update(this.world, dt, this.input, this.playerId);
     this.combat.update(this.world, dt, this.playerId);
+    // Update team base info for bot AI
+    this.updateTeamBases();
     this.botAI.update(this.world, dt, this.playerId);
     this.spawns.update(this.world, dt, this.camera);
     this.pentagonNest.update(this.world, dt);
