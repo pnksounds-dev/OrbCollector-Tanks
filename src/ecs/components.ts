@@ -46,6 +46,14 @@ export interface TankComponent {
   hp: number;
   maxHp: number;
   regen: number; // hp per second
+  /** Shield HP — absorbs damage before hp. */
+  shield: number;
+  /** Maximum shield HP. */
+  maxShield: number;
+  /** Shield regeneration rate (shield per second). */
+  shieldRegen: number;
+  /** Shield damage flash timer — > 0 means shield was recently hit (shows shield sprite). */
+  shieldFlash: number;
   /** Contact damage dealt when ramming. */
   bodyDamage: number;
   /** Total XP earned (also the score). */
@@ -154,6 +162,10 @@ export function createTankEntity(
     hp: t.baseMaxHp,
     maxHp: t.baseMaxHp,
     regen: t.baseRegen,
+    shield: t.baseMaxShield,
+    maxShield: t.baseMaxShield,
+    shieldRegen: t.baseShieldRegen,
+    shieldFlash: 0,
     bodyDamage: t.baseBodyDamage,
     xp: 0,
     level: 1,

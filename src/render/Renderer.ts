@@ -398,16 +398,28 @@ export class Renderer {
 
       ctx.restore();
 
-      // HP bar above tank
-      if (tank.hp < tank.maxHp) {
+      // HP bar + shield bar above tank
+      if (tank.hp < tank.maxHp || tank.shield < tank.maxShield) {
         const barW = tank.bodyRadius * 2;
         const barH = 8;
         const bx = pos.x - barW / 2;
-        const by = pos.y - tank.bodyRadius - 14;
-        ctx.fillStyle = CONFIG.colors.hpBarBg;
-        ctx.fillRect(bx, by, barW, barH);
-        ctx.fillStyle = CONFIG.colors.hpBarFg;
-        ctx.fillRect(bx, by, barW * (tank.hp / tank.maxHp), barH);
+        // Shield bar (blue) above HP bar (green)
+        const shieldBy = pos.y - tank.bodyRadius - 14;
+        const hpBy = shieldBy - barH - 2;
+        // Shield bar
+        if (tank.shield < tank.maxShield) {
+          ctx.fillStyle = CONFIG.colors.hpBarBg;
+          ctx.fillRect(bx, shieldBy, barW, barH);
+          ctx.fillStyle = CONFIG.colors.shieldBarFg;
+          ctx.fillRect(bx, shieldBy, barW * (tank.shield / tank.maxShield), barH);
+        }
+        // HP bar
+        if (tank.hp < tank.maxHp) {
+          ctx.fillStyle = CONFIG.colors.hpBarBg;
+          ctx.fillRect(bx, hpBy, barW, barH);
+          ctx.fillStyle = CONFIG.colors.hpBarFg;
+          ctx.fillRect(bx, hpBy, barW * (tank.hp / tank.maxHp), barH);
+        }
       }
 
       // Bot name label
@@ -429,7 +441,7 @@ export class Renderer {
         ctx.fillText("You", pos.x, pos.y - tank.bodyRadius - 22);
       }
 
-      // Invuln glow
+      // Invuln glow (white ring only — no shield sprite during spawn invuln)
       if (tank.invuln > 0) {
         ctx.save();
         ctx.globalAlpha = 0.3 + 0.2 * Math.sin(performance.now() / 80);
@@ -439,15 +451,18 @@ export class Renderer {
         ctx.arc(pos.x, pos.y, tank.bodyRadius + 6, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+      }
 
-        // Pulsing shield sprite
+      // Shield damage flash — only show shield sprite when shield is actively absorbing damage
+      if (tank.shieldFlash > 0 && tank.shield > 0) {
         const shieldSprite = this.getFxSprite("ShieldDamageEffect");
         if (shieldSprite) {
-          const pulse = 1 + 0.15 * Math.sin(performance.now() / 100);
-          const r = (tank.bodyRadius + 10) * pulse;
+          const flashAlpha = tank.shieldFlash / 0.3; // fade out over 300ms
+          const pulse = 1 + 0.1 * Math.sin(performance.now() / 50);
+          const r = (tank.bodyRadius + 8) * pulse;
           const s = r * 2;
           ctx.save();
-          ctx.globalAlpha = 0.4 + 0.2 * Math.sin(performance.now() / 100);
+          ctx.globalAlpha = flashAlpha * 0.7;
           ctx.drawImage(shieldSprite, pos.x - r, pos.y - r, s, s);
           ctx.restore();
         }

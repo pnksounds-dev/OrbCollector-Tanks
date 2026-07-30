@@ -37,6 +37,7 @@ export class LevelSystem {
       this.recalcStats(tank);
       // Heal to full on level up
       tank.hp = tank.maxHp;
+      tank.shield = tank.maxShield;
       this.audio.play("levelup");
     }
   }
@@ -63,6 +64,8 @@ export class LevelSystem {
   recalcStats(tank: TankComponent): void {
     const t = CONFIG.tank;
     tank.maxHp = t.baseMaxHp + tank.stats[1] * t.statMaxHpPerPoint;
+    tank.maxShield = t.baseMaxShield + tank.stats[1] * t.statMaxHpPerPoint * 0.5;
+    tank.shieldRegen = t.baseShieldRegen + tank.stats[0] * t.statRegenPerPoint * 2;
     tank.regen = t.baseRegen + tank.stats[0] * t.statRegenPerPoint;
     tank.bodyDamage = t.baseBodyDamage + tank.stats[2] * t.statBodyDamagePerPoint;
     // Bullet stats are read live in CombatSystem from tank.stats, so no

@@ -83,6 +83,13 @@ export class MovementSystem {
       tank.hp = Math.min(tank.maxHp, tank.hp + regen);
     }
 
+    // Shield regen (only when not recently hit)
+    if (tank.shieldFlash > 0) {
+      tank.shieldFlash = Math.max(0, tank.shieldFlash - dt);
+    } else if (tank.shield < tank.maxShield) {
+      tank.shield = Math.min(tank.maxShield, tank.shield + tank.shieldRegen * dt);
+    }
+
     // Invuln countdown
     if (tank.invuln > 0) {
       tank.invuln = Math.max(0, tank.invuln - dt);

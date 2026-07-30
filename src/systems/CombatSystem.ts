@@ -30,6 +30,20 @@ import { Input } from "../game/Input";
 import { circlesOverlap } from "../lib/math";
 import { EffectSystem } from "./EffectSystem";
 
+/** Apply damage to a tank — shield absorbs first, then HP.
+ *  Sets shieldFlash if the shield absorbed any damage. */
+function applyDamage(tank: TankComponent, amount: number): void {
+  if (tank.shield > 0) {
+    const absorbed = Math.min(tank.shield, amount);
+    tank.shield -= absorbed;
+    amount -= absorbed;
+    tank.shieldFlash = 0.3; // flash for 300ms
+  }
+  if (amount > 0) {
+    tank.hp -= amount;
+  }
+}
+
 export class CombatSystem {
   private audio: AudioManager;
   private storage: Storage;
@@ -187,7 +201,7 @@ export class CombatSystem {
         if (ownerTeamId >= 0 && theirTeamId >= 0 && ownerTeamId === theirTeamId) continue;
 
         if (circlesOverlap(bpos.x, bpos.y, bullet.radius, tpos.x, tpos.y, tank.bodyRadius)) {
-          tank.hp -= bullet.damage;
+          applyDamage(tank, bullet.damage);
           bullet.penetration -= 1;
           this.audio.play("hit");
           EffectSystem.spawnHit(world, bpos.x, bpos.y);
@@ -238,7 +252,7 @@ export class CombatSystem {
       if (circlesOverlap(pos.x, pos.y, tank.bodyRadius, spos.x, spos.y, shape.radius)) {
         shape.hp -= bodyDamage * dt;
         if (tank.invuln <= 0) {
-          tank.hp -= shape.bodyDamage * dt;
+          applyDamage(tank, shape.bodyDamage * dt);
         }
 
         if (shape.hp <= 0) {
@@ -281,8 +295,8 @@ export class CombatSystem {
             (CONFIG.tank.baseBodyDamage + atank.stats[2] * CONFIG.tank.statBodyDamagePerPoint) * dt;
           const bDmg =
             (CONFIG.tank.baseBodyDamage + btank.stats[2] * CONFIG.tank.statBodyDamagePerPoint) * dt;
-          atank.hp -= bDmg;
-          btank.hp -= aDmg;
+          applyDamage(atank, bDmg);
+          applyDamage(btank, aDmg);
 
           if (atank.hp <= 0 && !tanksToDestroy.includes(a)) {
             tanksToDestroy.push(a);

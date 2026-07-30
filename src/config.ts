@@ -40,6 +40,8 @@ interface TankConfig {
   baseBarrelWidth: number;
   baseMaxHp: number;
   baseRegen: number; // hp/s
+  baseMaxShield: number;
+  baseShieldRegen: number; // shield/s
   baseBodyDamage: number;
   baseSpeed: number; // world units/s
   baseFireRate: number; // shots per second
@@ -84,6 +86,8 @@ export const CONFIG = {
     baseBarrelWidth: 18,
     baseMaxHp: 100,
     baseRegen: 1.0,
+    baseMaxShield: 50,
+    baseShieldRegen: 5.0,
     baseBodyDamage: 10,
     baseSpeed: 220,
     baseFireRate: 1.5, // shots per second at reload 0
@@ -171,6 +175,7 @@ export const CONFIG = {
     redZone: "rgba(255, 0, 0, 0.15)",
     hpBarBg: "rgba(0,0,0,0.4)",
     hpBarFg: "#8fce1e",
+    shieldBarFg: "#00b2e1",
   },
 
   // ---- Teams ----

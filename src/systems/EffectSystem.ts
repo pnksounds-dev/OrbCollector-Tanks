@@ -24,6 +24,9 @@ function effectCount(world: ECWorld): number {
   return world.query(C.Position, C.Effect).length;
 }
 
+/** Current smoke frame counter — cycles 1-9 sequentially for animated smoke. */
+let smokeFrame = 1;
+
 export class EffectSystem {
   private smokeTimers = new Map<number, number>();
 
@@ -180,7 +183,10 @@ export class EffectSystem {
 
   static spawnSmoke(world: ECWorld, x: number, y: number): void {
     if (effectCount(world) >= MAX_EFFECTS) return;
-    const smokeName = "smoke" + (1 + Math.floor(Math.random() * 9));
+    // Cycle through smoke frames 1-9 sequentially for proper animation order
+    const smokeName = "smoke" + smokeFrame;
+    smokeFrame++;
+    if (smokeFrame > 9) smokeFrame = 1;
     createEffectEntity(
       world,
       x,

@@ -278,6 +278,8 @@ export function createBotEntity(
   world.addComponent<TankComponent>(id, C.Tank, {
     bodyRadius, barrelLength: t.baseBarrelLength, barrelWidth: t.baseBarrelWidth,
     hp: maxHp, maxHp, regen, bodyDamage,
+    shield: t.baseMaxShield, maxShield: t.baseMaxShield,
+    shieldRegen: t.baseShieldRegen, shieldFlash: 0,
     xp: 0, level, statPoints: 0, stats,
     fireCooldown: 0, invuln: t.spawnInvuln, classId: "basic",
   });
@@ -1001,11 +1003,15 @@ export class BotAISystem {
   private tickTimers(tank: TankComponent, dt: number): void {
     if (tank.fireCooldown > 0) tank.fireCooldown = Math.max(0, tank.fireCooldown - dt);
     if (tank.invuln > 0) tank.invuln = Math.max(0, tank.invuln - dt);
+    if (tank.shieldFlash > 0) tank.shieldFlash = Math.max(0, tank.shieldFlash - dt);
   }
 
   private applyRegen(tank: TankComponent, dt: number): void {
     if (tank.hp < tank.maxHp) {
       tank.hp = Math.min(tank.maxHp, tank.hp + tank.regen * dt);
+    }
+    if (tank.shieldFlash <= 0 && tank.shield < tank.maxShield) {
+      tank.shield = Math.min(tank.maxShield, tank.shield + tank.shieldRegen * dt);
     }
   }
 
@@ -1018,6 +1024,7 @@ export class BotAISystem {
       tank.bodyRadius = CONFIG.tank.baseBodyRadius + (tank.level - 1) * CONFIG.tank.radiusGrowthPerLevel;
       this.recalcStats(tank);
       tank.hp = tank.maxHp;
+      tank.shield = tank.maxShield;
       leveled = true;
     }
     if (leveled) this.spendStatPoints(tank, ai);
@@ -1030,6 +1037,8 @@ export class BotAISystem {
   private recalcStats(tank: TankComponent): void {
     const t = CONFIG.tank;
     tank.maxHp = t.baseMaxHp + tank.stats[1] * t.statMaxHpPerPoint;
+    tank.maxShield = t.baseMaxShield + tank.stats[1] * t.statMaxHpPerPoint * 0.5;
+    tank.shieldRegen = t.baseShieldRegen + tank.stats[0] * t.statRegenPerPoint * 2;
     tank.regen = t.baseRegen + tank.stats[0] * t.statRegenPerPoint;
     tank.bodyDamage = t.baseBodyDamage + tank.stats[2] * t.statBodyDamagePerPoint;
   }
