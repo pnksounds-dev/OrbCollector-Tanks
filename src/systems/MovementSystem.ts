@@ -18,6 +18,7 @@ import {
   type BulletComponent,
   type ParticleComponent,
 } from "../ecs/components";
+import { getBaseTeamAt } from "./BotAISystem";
 import { getClass } from "../game/TankClasses";
 import type { Input } from "../game/Input";
 import { angleTo, clamp } from "../lib/math";
@@ -145,13 +146,16 @@ export class MovementSystem {
       pos.y += vel.vy * dt;
       bullet.life -= dt;
 
-      // Die at arena edge or life end
+      // Die at arena edge, life end, or entering an enemy team's base safe zone
+      const baseTeam = getBaseTeamAt(pos.x, pos.y);
+      const inEnemyBase = baseTeam >= 0 && baseTeam !== bullet.ownerTeamId;
       if (
         bullet.life <= 0 ||
         pos.x < -half ||
         pos.x > half ||
         pos.y < -half ||
-        pos.y > half
+        pos.y > half ||
+        inEnemyBase
       ) {
         toDestroy.push(id);
       }

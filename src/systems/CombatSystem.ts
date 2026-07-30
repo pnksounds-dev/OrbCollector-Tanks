@@ -31,8 +31,9 @@ import { circlesOverlap } from "../lib/math";
 import { EffectSystem } from "./EffectSystem";
 
 /** Apply damage to a tank — shield absorbs first, then HP.
- *  Sets shieldFlash if the shield absorbed any damage. */
-function applyDamage(tank: TankComponent, amount: number): void {
+ *  Sets shieldFlash if the shield absorbed any damage.
+ *  damagerId is recorded as the last entity that damaged this tank. */
+function applyDamage(tank: TankComponent, amount: number, damagerId: EntityId | null): void {
   if (tank.shield > 0) {
     const absorbed = Math.min(tank.shield, amount);
     tank.shield -= absorbed;
@@ -41,6 +42,9 @@ function applyDamage(tank: TankComponent, amount: number): void {
   }
   if (amount > 0) {
     tank.hp -= amount;
+  }
+  if (damagerId !== null) {
+    tank.lastDamagerId = damagerId;
   }
 }
 
@@ -110,6 +114,10 @@ export class CombatSystem {
     // Get barrel configs for this class
     const barrels = getBarrels(tank.classId, tank.barrelLength, tank.barrelWidth);
 
+    // Look up owner's team for base safe-zone checks
+    const ownerTeam = world.getComponent<TeamComponent>(ownerId, C.Team);
+    const ownerTeamId = ownerTeam ? ownerTeam.id : -1;
+
     for (const barrel of barrels) {
       const barrelAngle = pos.angle + barrel.angle;
       // Spawn at barrel tip
@@ -125,6 +133,7 @@ export class CombatSystem {
         bulletDamage,
         bulletPenetration,
         ownerId,
+        ownerTeamId,
       );
     }
 
@@ -201,7 +210,7 @@ export class CombatSystem {
         if (ownerTeamId >= 0 && theirTeamId >= 0 && ownerTeamId === theirTeamId) continue;
 
         if (circlesOverlap(bpos.x, bpos.y, bullet.radius, tpos.x, tpos.y, tank.bodyRadius)) {
-          applyDamage(tank, bullet.damage);
+          applyDamage(tank, bullet.damage, bullet.ownerId);
           bullet.penetration -= 1;
           this.audio.play("hit");
           EffectSystem.spawnHit(world, bpos.x, bpos.y);
@@ -252,7 +261,7 @@ export class CombatSystem {
       if (circlesOverlap(pos.x, pos.y, tank.bodyRadius, spos.x, spos.y, shape.radius)) {
         shape.hp -= bodyDamage * dt;
         if (tank.invuln <= 0) {
-          applyDamage(tank, shape.bodyDamage * dt);
+          applyDamage(tank, shape.bodyDamage * dt, sid);
         }
 
         if (shape.hp <= 0) {
@@ -295,8 +304,8 @@ export class CombatSystem {
             (CONFIG.tank.baseBodyDamage + atank.stats[2] * CONFIG.tank.statBodyDamagePerPoint) * dt;
           const bDmg =
             (CONFIG.tank.baseBodyDamage + btank.stats[2] * CONFIG.tank.statBodyDamagePerPoint) * dt;
-          applyDamage(atank, bDmg);
-          applyDamage(btank, aDmg);
+          applyDamage(atank, bDmg, b);
+          applyDamage(btank, aDmg, a);
 
           if (atank.hp <= 0 && !tanksToDestroy.includes(a)) {
             tanksToDestroy.push(a);

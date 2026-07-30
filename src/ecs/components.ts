@@ -54,6 +54,8 @@ export interface TankComponent {
   shieldRegen: number;
   /** Shield damage flash timer — > 0 means shield was recently hit (shows shield sprite). */
   shieldFlash: number;
+  /** Last entity that damaged this tank (for spectating on death). */
+  lastDamagerId: EntityId | null;
   /** Contact damage dealt when ramming. */
   bodyDamage: number;
   /** Total XP earned (also the score). */
@@ -94,6 +96,8 @@ export interface BulletComponent {
   life: number;
   /** Entity ID of the tank that fired (for XP attribution). */
   ownerId: EntityId;
+  /** Team ID of the firing tank (-1 = FFA). Used for base safe-zone checks. */
+  ownerTeamId: number;
 }
 
 export interface ParticleComponent {
@@ -166,6 +170,7 @@ export function createTankEntity(
     maxShield: t.baseMaxShield,
     shieldRegen: t.baseShieldRegen,
     shieldFlash: 0,
+    lastDamagerId: null,
     bodyDamage: t.baseBodyDamage,
     xp: 0,
     level: 1,
@@ -221,6 +226,7 @@ export function createBulletEntity(
   damage: number,
   penetration: number,
   ownerId: EntityId,
+  ownerTeamId: number = -1,
 ): EntityId {
   const id = world.createEntity();
   world.addComponent<PositionComponent>(id, C.Position, { x, y, angle });
@@ -234,6 +240,7 @@ export function createBulletEntity(
     penetration,
     life: CONFIG.bullet.life,
     ownerId,
+    ownerTeamId,
   });
   return id;
 }

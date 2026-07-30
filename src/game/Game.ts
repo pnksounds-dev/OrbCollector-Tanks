@@ -86,6 +86,17 @@ export class Game {
   playerId: EntityId | null = null;
   playerName: string = "Player";
   gameMode: GameMode = "2teams";
+  /** True when a live world exists and should keep simulating (even while player is dead). */
+  private worldActive = false;
+  /** Entity the camera follows while spectating (the killer). Null = follow death spot. */
+  private spectateId: EntityId | null = null;
+  /** Death position for fallback camera when spectating. */
+  private deathX = 0;
+  private deathY = 0;
+  /** Auto-respawn timer (seconds until auto-respawn when toggle is on). */
+  private autoRespawnTimer = 0;
+  /** Whether auto-respawn is enabled (toggleable on death screen). */
+  autoRespawn = false;
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -154,7 +165,7 @@ export class Game {
     this.camera.setViewport(w, h);
   }
 
-  /** Start a new game: spawn the player, bots, shapes, and pentagon nest.
+  /** Start a new live lobby: create the persistent world once, then spawn the player.
    *  Game mode determines map size, bot count, and team assignment. */
   startGame(mode: GameMode = "2teams"): void {
     this.gameMode = mode;
@@ -162,10 +173,56 @@ export class Game {
     // Override worldHalf for this game mode
     CONFIG.worldHalf = modeCfg.worldHalf;
 
-    this.world = new ECWorld();
-    const teamCount = modeCfg.teamCount;
+    this.createWorld(mode);
+    this.spawnPlayer();
+  }
 
-    // Determine player team and spawn position
+  /** Create the persistent world: shapes, pentagon nest, and bots. Called once per lobby. */
+  private createWorld(mode: GameMode): void {
+    this.world = new ECWorld();
+    const teamCount = CONFIG.gameModes[mode].teamCount;
+
+    this.spawns.init(this.world);
+    this.pentagonNest.init(this.world);
+
+    // Spawn bots, distributed across teams
+    const botCount = CONFIG.gameModes[mode].botCount;
+    for (let i = 0; i < botCount; i++) {
+      let botTeam = -1;
+      let bx = 0;
+      let by = 0;
+      if (teamCount > 0) {
+        botTeam = i % teamCount;
+        const base = this.getTeamBase(botTeam, teamCount);
+        // Spawn near team base center with some spread
+        const spread = 400;
+        bx = base.x + (Math.random() - 0.5) * spread * 2;
+        by = base.y + (Math.random() - 0.5) * spread * 2;
+      } else {
+        // FFA: spawn in a ring around the center
+        const angle = (i / botCount) * Math.PI * 2;
+        const dist = 800 + Math.random() * 600;
+        bx = Math.cos(angle) * dist;
+        by = Math.sin(angle) * dist;
+      }
+      // Clamp to arena
+      const half = CONFIG.worldHalf - 150;
+      bx = Math.max(-half, Math.min(half, bx));
+      by = Math.max(-half, Math.min(half, by));
+      const name = BOT_NAMES[i % BOT_NAMES.length];
+      const color = teamCount > 0
+        ? CONFIG.teams.colors[botTeam]
+        : BOT_COLORS[i % BOT_COLORS.length];
+      createBotEntity(this.world, bx, by, name, color, botTeam);
+    }
+
+    this.worldActive = true;
+    this.updateTeamBases();
+  }
+
+  /** Spawn (or respawn) the player into the existing world at their team base. */
+  private spawnPlayer(): void {
+    const teamCount = CONFIG.gameModes[this.gameMode].teamCount;
     let playerTeam = -1;
     let playerX = 0;
     let playerY = 0;
@@ -176,39 +233,8 @@ export class Game {
       playerY = base.y;
     }
     this.playerId = createTankEntity(this.world, playerX, playerY, playerTeam);
-    this.spawns.init(this.world);
-    this.pentagonNest.init(this.world);
-
-    // Spawn bots, distributed across teams
-    const botCount = modeCfg.botCount;
-    for (let i = 0; i < botCount; i++) {
-      let botTeam = -1;
-      let bx = 0;
-      let by = 0;
-      if (teamCount > 0) {
-        botTeam = i % teamCount;
-        const base = this.getTeamBase(botTeam, teamCount);
-        // Spawn near team base with some spread
-        const spread = 400;
-        bx = base.x + (Math.random() - 0.5) * spread * 2;
-        by = base.y + (Math.random() - 0.5) * spread * 2;
-      } else {
-        // FFA: spawn in a ring around the player
-        const angle = (i / botCount) * Math.PI * 2;
-        const dist = 800 + Math.random() * 600;
-        bx = Math.cos(angle) * dist;
-        by = Math.sin(angle) * dist;
-      }
-      // Clamp to arena
-      const half = CONFIG.worldHalf - 150;
-      bx = Math.max(-half, Math.min(half, bx));
-      by = Math.max(-half, Math.min(half, by));
-      const name = BOT_NAMES[i % BOT_NAMES.length] + (teamCount > 0 ? "" : "");
-      const color = teamCount > 0
-        ? CONFIG.teams.colors[botTeam]
-        : BOT_COLORS[i % BOT_COLORS.length];
-      createBotEntity(this.world, bx, by, name, color, botTeam);
-    }
+    this.spectateId = null;
+    this.autoRespawnTimer = 0;
 
     // Track game count
     this.storage.incrementGames();
@@ -218,26 +244,53 @@ export class Game {
     this.menu.hideDeath();
   }
 
-  /** Get the base position for a team in the given team count.
+  /** Get the base center position for a team in the given team count.
    *  2 teams: top and bottom of the world (team 0 = top, team 1 = bottom).
    *  4 teams: four corners (TL, TR, BL, BR). */
   private getTeamBase(teamId: number, teamCount: number): { x: number; y: number } {
-    const half = CONFIG.worldHalf * 0.75;
+    const half = CONFIG.worldHalf;
     if (teamCount === 2) {
-      // Top and bottom (matches diep.io's 2TDM layout)
-      return teamId === 0 ? { x: 0, y: -half } : { x: 0, y: half };
+      const depth = CONFIG.teams.baseDepth2;
+      // Top and bottom bands (matches diep.io's 2TDM layout)
+      return teamId === 0 ? { x: 0, y: -(half - depth / 2) } : { x: 0, y: half - depth / 2 };
     }
     if (teamCount === 4) {
-      // Four corners
+      const depth = CONFIG.teams.baseDepth4;
+      // Four corner quadrants — centered between the corner and the inner edge
+      const c = half - depth / 2;
       const positions = [
-        { x: -half, y: -half },
-        { x: half, y: -half },
-        { x: -half, y: half },
-        { x: half, y: half },
+        { x: -c, y: -c },
+        { x: c, y: -c },
+        { x: -c, y: c },
+        { x: c, y: c },
       ];
       return positions[teamId % 4];
     }
     return { x: 0, y: 0 };
+  }
+
+  /** Compute the rectangle bounds for a team's base zone. */
+  private getTeamBaseRect(teamId: number, teamCount: number): { minX: number; maxX: number; minY: number; maxY: number } {
+    const half = CONFIG.worldHalf;
+    if (teamCount === 2) {
+      const depth = CONFIG.teams.baseDepth2;
+      // Team 0 = top band, team 1 = bottom band, full width
+      return teamId === 0
+        ? { minX: -half, maxX: half, minY: -half, maxY: -half + depth }
+        : { minX: -half, maxX: half, minY: half - depth, maxY: half };
+    }
+    if (teamCount === 4) {
+      const depth = CONFIG.teams.baseDepth4;
+      // Four corner quadrants (do not reach center)
+      const left = teamId === 0 || teamId === 2;
+      const top = teamId === 0 || teamId === 1;
+      const minX = left ? -half : half - depth;
+      const maxX = left ? -half + depth : half;
+      const minY = top ? -half : half - depth;
+      const maxY = top ? -half + depth : half;
+      return { minX, maxX, minY, maxY };
+    }
+    return { minX: 0, maxX: 0, minY: 0, maxY: 0 };
   }
 
   /** Update team base info for the bot AI system. */
@@ -247,25 +300,32 @@ export class Game {
       setTeamBases([]);
       return;
     }
-    const baseRadius = teamCount === 2 ? CONFIG.teams.baseRadius2 : CONFIG.teams.baseRadius4;
-    const bases: { x: number; y: number; radius: number }[] = [];
+    const bases: { x: number; y: number; minX: number; maxX: number; minY: number; maxY: number }[] = [];
     for (let t = 0; t < teamCount; t++) {
       const pos = this.getTeamBase(t, teamCount);
-      bases.push({ x: pos.x, y: pos.y, radius: baseRadius });
+      const rect = this.getTeamBaseRect(t, teamCount);
+      bases.push({ x: pos.x, y: pos.y, minX: rect.minX, maxX: rect.maxX, minY: rect.minY, maxY: rect.maxY });
     }
     setTeamBases(bases);
   }
 
-  /** Respawn the player after death (reset to level 1). */
+  /** Respawn the player into the existing live world (reset to level 1). */
   respawn(): void {
-    this.startGame(this.gameMode);
+    if (!this.worldActive) {
+      // No live world yet — create one
+      this.startGame(this.gameMode);
+      return;
+    }
+    this.spawnPlayer();
   }
 
-  /** Return to the start menu (from death screen). */
+  /** Return to the start menu (from death screen). Tears down the live world. */
   toMenu(): void {
     this.state = "menu";
     this.world = new ECWorld();
+    this.worldActive = false;
     this.playerId = null;
+    this.spectateId = null;
     this.startMenu.show();
   }
 
@@ -280,7 +340,8 @@ export class Game {
     this.devPanel.applyDevValues();
     this.input.updateWorldMouse();
 
-    if (this.state === "playing" && this.playerId !== null) {
+    // The live world keeps simulating even while the player is dead (spectating).
+    if (this.worldActive) {
       this.update(dt);
     }
 
@@ -292,6 +353,11 @@ export class Game {
       this.hud.update();
       this.minimap.update(this.world, this.camera, this.playerId);
       this.leaderboard.update(this.world, this.playerId);
+    } else if (this.state === "dead") {
+      // Keep minimap + leaderboard visible while spectating the live world
+      const pid: EntityId = this.playerId ?? -1;
+      this.minimap.update(this.world, this.camera, pid);
+      this.leaderboard.update(this.world, pid);
     }
 
     this.handleInputEdges();
@@ -300,37 +366,65 @@ export class Game {
   };
 
   private update(dt: number): void {
-    if (this.playerId === null) return;
+    const alive = this.state === "playing" && this.playerId !== null;
+    // When dead, pass -1 as playerId sentinel (no entity matches — world still simulates)
+    const pid: EntityId = this.playerId ?? -1;
 
-    // Handle stat spend from number keys
-    if (this.input.statSpend >= 0) {
-      this.level.spendStat(this.world, this.playerId, this.input.statSpend as StatIndex);
+    // Player-specific input (only when alive)
+    if (alive && this.input.statSpend >= 0) {
+      this.level.spendStat(this.world, pid, this.input.statSpend as StatIndex);
     }
 
-    this.movement.update(this.world, dt, this.input, this.playerId);
-    this.combat.update(this.world, dt, this.playerId);
+    // World simulation runs continuously (live lobby)
+    this.movement.update(this.world, dt, this.input, pid);
+    this.combat.update(this.world, dt, pid);
     // Update team base info for bot AI
     this.updateTeamBases();
-    this.botAI.update(this.world, dt, this.playerId);
+    this.botAI.update(this.world, dt, pid);
     this.spawns.update(this.world, dt, this.camera);
     this.pentagonNest.update(this.world, dt);
-    this.level.update(this.world, dt, this.playerId);
+    this.level.update(this.world, dt, pid);
     this.effects.update(this.world, dt);
 
     // Maintain bot population (remove dead, spawn new)
     const modeCfg = CONFIG.gameModes[this.gameMode];
-    maintainBots(this.world, modeCfg.botCount, this.playerId, this.gameMode);
+    maintainBots(this.world, modeCfg.botCount, pid, this.gameMode);
 
-    // Camera follows player
-    const pos = this.world.getComponent<PositionComponent>(this.playerId, C.Position);
-    if (pos) {
-      this.camera.follow(pos.x, pos.y);
-    }
+    // Camera + death handling
+    if (alive) {
+      // Camera follows player
+      const pos = this.world.getComponent<PositionComponent>(pid, C.Position);
+      if (pos) {
+        this.camera.follow(pos.x, pos.y);
+      }
+      // Check death
+      const tank = this.world.getComponent<TankComponent>(pid, C.Tank);
+      if (tank && tank.hp <= 0) {
+        this.onDeath();
+      }
+    } else if (this.state === "dead") {
+      // Spectate: camera follows the killer (or death spot if killer is gone)
+      let camX = this.deathX;
+      let camY = this.deathY;
+      if (this.spectateId !== null && this.world.hasComponent(this.spectateId, C.Position)) {
+        const spos = this.world.getComponent<PositionComponent>(this.spectateId, C.Position);
+        if (spos) {
+          camX = spos.x;
+          camY = spos.y;
+        }
+      } else {
+        // Killer gone — fall back to nearest enemy tank, else hold position
+        this.spectateId = null;
+      }
+      this.camera.follow(camX, camY);
 
-    // Check death
-    const tank = this.world.getComponent<TankComponent>(this.playerId, C.Tank);
-    if (tank && tank.hp <= 0) {
-      this.onDeath();
+      // Auto-respawn countdown
+      if (this.autoRespawn) {
+        this.autoRespawnTimer -= dt;
+        if (this.autoRespawnTimer <= 0) {
+          this.respawn();
+        }
+      }
     }
   }
 
@@ -342,12 +436,20 @@ export class Game {
     // Persist stats
     this.storage.setHighScore(score);
     this.storage.addCoins(Math.floor(score / 10));
+
+    // Record death position + killer for spectating
+    const pos = this.world.getComponent<PositionComponent>(this.playerId, C.Position);
+    this.deathX = pos ? pos.x : 0;
+    this.deathY = pos ? pos.y : 0;
+    this.spectateId = tank && tank.lastDamagerId != null ? tank.lastDamagerId : null;
+
     this.state = "dead";
     this.hud.hide();
-    this.leaderboard.hide();
     this.menu.showDeath(score, level);
     this.world.destroyEntity(this.playerId);
     this.playerId = null;
+    // Start auto-respawn timer (5 second delay) if enabled
+    this.autoRespawnTimer = 5;
   }
 
   /** Upgrade the player's tank to a new class. Called from HUD. */

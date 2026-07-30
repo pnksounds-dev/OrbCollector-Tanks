@@ -280,6 +280,7 @@ export function createBotEntity(
     hp: maxHp, maxHp, regen, bodyDamage,
     shield: t.baseMaxShield, maxShield: t.baseMaxShield,
     shieldRegen: t.baseShieldRegen, shieldFlash: 0,
+    lastDamagerId: null,
     xp: 0, level, statPoints: 0, stats,
     fireCooldown: 0, invuln: t.spawnInvuln, classId: "basic",
   });
@@ -311,9 +312,14 @@ export function createBotEntity(
 // ---- Team base info (set by Game.ts each frame) ----
 
 interface TeamBaseInfo {
+  /** Base center (retreat target). */
   x: number;
   y: number;
-  radius: number;
+  /** Rectangle bounds of the base zone. */
+  minX: number;
+  maxX: number;
+  minY: number;
+  maxY: number;
 }
 
 /** Team bases for the current game. Index = teamId. Empty = FFA. */
@@ -322,6 +328,37 @@ let teamBases: TeamBaseInfo[] = [];
 /** Set team base positions (called by Game.ts at start and each frame). */
 export function setTeamBases(bases: TeamBaseInfo[]): void {
   teamBases = bases;
+}
+
+/** True if (x,y) is inside the given team's base zone. */
+export function isInBaseZone(x: number, y: number, teamId: number): boolean {
+  const base = teamBases[teamId];
+  if (!base) return false;
+  return x >= base.minX && x <= base.maxX && y >= base.minY && y <= base.maxY;
+}
+
+/** True if (x,y) is inside ANY team's base zone. */
+export function isInAnyBaseZone(x: number, y: number): boolean {
+  for (const base of teamBases) {
+    if (x >= base.minX && x <= base.maxX && y >= base.minY && y <= base.maxY) return true;
+  }
+  return false;
+}
+
+/** Returns the team ID whose base zone contains (x,y), or -1 if none. */
+export function getBaseTeamAt(x: number, y: number): number {
+  for (let i = 0; i < teamBases.length; i++) {
+    const base = teamBases[i];
+    if (x >= base.minX && x <= base.maxX && y >= base.minY && y <= base.maxY) return i;
+  }
+  return -1;
+}
+
+/** Distance from (x,y) to the nearest edge of a base rectangle (0 if inside). */
+function distToBaseRect(x: number, y: number, base: TeamBaseInfo): number {
+  const dx = Math.max(base.minX - x, 0, x - base.maxX);
+  const dy = Math.max(base.minY - y, 0, y - base.maxY);
+  return Math.hypot(dx, dy);
 }
 
 // ---- System ----
@@ -457,7 +494,7 @@ export class BotAISystem {
     // ---- DEFENDING: hold near base, engage approaching enemies ----
     if (ai.behavior === "defending" && myTeamId >= 0 && teamBases[myTeamId]) {
       const base = teamBases[myTeamId];
-      const distToBase = dist(pos.x, pos.y, base.x, base.y);
+      const distToBase = distToBaseRect(pos.x, pos.y, base);
 
       // If enemy is near base, engage
       if (enemy && enemyDist < personalAbortRange) {
@@ -466,7 +503,7 @@ export class BotAISystem {
         ai.targetY = enemy.y;
         ai.steerAngle = angleTo(pos.x, pos.y, enemy.x, enemy.y);
         ai.fireFlag = enemyDist < fireRange;
-      } else if (distToBase > base.radius * 0.7) {
+      } else if (distToBase > 200) {
         // Return to base
         ai.targetId = null;
         ai.targetX = base.x;
@@ -476,7 +513,7 @@ export class BotAISystem {
       } else {
         // Patrol near base
         const patrolAngle = ai.formationOffset * Math.PI * 2 + Date.now() * 0.0003;
-        const patrolR = base.radius * 0.5;
+        const patrolR = 300;
         ai.targetX = base.x + Math.cos(patrolAngle) * patrolR;
         ai.targetY = base.y + Math.sin(patrolAngle) * patrolR;
         ai.steerAngle = angleTo(pos.x, pos.y, ai.targetX, ai.targetY);
@@ -931,19 +968,21 @@ export class BotAISystem {
       }
     }
 
-    // --- 5. Enemy base avoidance ---
+    // --- 5. Enemy base avoidance (rectangle zones) ---
     if (myTeamId >= 0) {
       for (let ti = 0; ti < teamBases.length; ti++) {
         if (ti === myTeamId) continue;
         const base = teamBases[ti];
-        const dx = pos.x - base.x;
-        const dy = pos.y - base.y;
-        const d = Math.hypot(dx, dy);
-        const avoidDist = base.radius + ENEMY_BASE_AVOID_RANGE;
+        const d = distToBaseRect(pos.x, pos.y, base);
+        const avoidDist = ENEMY_BASE_AVOID_RANGE;
         if (d < avoidDist && d > 0.1) {
+          // Push away from the nearest point on the rectangle
+          const nx = pos.x < base.minX ? pos.x - base.minX : pos.x > base.maxX ? pos.x - base.maxX : 0;
+          const ny = pos.y < base.minY ? pos.y - base.minY : pos.y > base.maxY ? pos.y - base.maxY : 0;
+          const len = Math.hypot(nx, ny) || 1;
           const force = (1 - d / avoidDist) * 2.5;
-          desX += (dx / d) * maxSpeed * force;
-          desY += (dy / d) * maxSpeed * force;
+          desX += (nx / len) * maxSpeed * force;
+          desY += (ny / len) * maxSpeed * force;
         }
       }
     }
@@ -995,7 +1034,9 @@ export class BotAISystem {
     const tipX = pos.x + Math.cos(pos.angle) * (tank.bodyRadius + tank.barrelLength);
     const tipY = pos.y + Math.sin(pos.angle) * (tank.bodyRadius + tank.barrelLength);
 
-    createBulletEntity(world, tipX, tipY, pos.angle, bulletSpeed, bulletDamage, bulletPenetration, botId);
+    const team = world.getComponent<TeamComponent>(botId, C.Team);
+    const teamId = team ? team.id : -1;
+    createBulletEntity(world, tipX, tipY, pos.angle, bulletSpeed, bulletDamage, bulletPenetration, botId, teamId);
   }
 
   // ---- Shared helpers ----
@@ -1192,10 +1233,17 @@ export function maintainBots(
           botTeam = t;
         }
       }
-      const half = CONFIG.worldHalf * 0.75;
-      const bases = teamCount === 2
-        ? [{ x: 0, y: -half }, { x: 0, y: half }]
-        : [{ x: -half, y: -half }, { x: half, y: -half }, { x: -half, y: half }, { x: half, y: half }];
+      // Base centers match Game.getTeamBase (rectangle-based, edge-to-edge zones)
+      const half = CONFIG.worldHalf;
+      let bases: { x: number; y: number }[];
+      if (teamCount === 2) {
+        const depth = CONFIG.teams.baseDepth2;
+        bases = [{ x: 0, y: -(half - depth / 2) }, { x: 0, y: half - depth / 2 }];
+      } else {
+        const depth = CONFIG.teams.baseDepth4;
+        const c = half - depth / 2;
+        bases = [{ x: -c, y: -c }, { x: c, y: -c }, { x: -c, y: c }, { x: c, y: c }];
+      }
       const base = bases[botTeam % bases.length];
       const spread = 400;
       bx = base.x + (Math.random() - 0.5) * spread * 2;

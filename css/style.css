@@ -222,6 +222,18 @@ html, body {
   margin-bottom: 8px;
 }
 
+.auto-respawn-label {
+  display: block;
+  font-size: 14px;
+  margin: 8px 0 4px;
+  cursor: pointer;
+  user-select: none;
+}
+.auto-respawn-label input {
+  margin-right: 6px;
+  cursor: pointer;
+}
+
 .btn {
   display: inline-block;
   padding: 10px 24px;

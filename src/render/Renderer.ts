@@ -208,25 +208,25 @@ export class Renderer {
     ctx.stroke();
   }
 
-  /** Draw team base zones — semi-transparent colored circles at each team's base.
-   *  2 teams: top and bottom of the world. 4 teams: four corners. */
+  /** Draw team base zones — semi-transparent colored rectangles spanning edge-to-edge.
+   *  2 teams: full-width top and bottom bands. 4 teams: four corner quadrants. */
   private drawTeamBases(teamCount: number): void {
     const ctx = this.ctx;
-    const half = CONFIG.worldHalf * 0.75;
-    const bases =
-      teamCount === 2
-        ? [
-            { x: 0, y: -half, color: CONFIG.teams.colors[0] },
-            { x: 0, y: half, color: CONFIG.teams.colors[1] },
-          ]
-        : [
-            { x: -half, y: -half, color: CONFIG.teams.colors[0] },
-            { x: half, y: -half, color: CONFIG.teams.colors[1] },
-            { x: -half, y: half, color: CONFIG.teams.colors[2] },
-            { x: half, y: half, color: CONFIG.teams.colors[3] },
-          ];
+    const half = CONFIG.worldHalf;
+    // Compute rectangle bounds per team (matches Game.getTeamBaseRect geometry)
+    const bases: { minX: number; maxX: number; minY: number; maxY: number; color: string }[] = [];
+    if (teamCount === 2) {
+      const depth = CONFIG.teams.baseDepth2;
+      bases.push({ minX: -half, maxX: half, minY: -half, maxY: -half + depth, color: CONFIG.teams.colors[0] });
+      bases.push({ minX: -half, maxX: half, minY: half - depth, maxY: half, color: CONFIG.teams.colors[1] });
+    } else if (teamCount === 4) {
+      const depth = CONFIG.teams.baseDepth4;
+      bases.push({ minX: -half, maxX: -half + depth, minY: -half, maxY: -half + depth, color: CONFIG.teams.colors[0] });
+      bases.push({ minX: half - depth, maxX: half, minY: -half, maxY: -half + depth, color: CONFIG.teams.colors[1] });
+      bases.push({ minX: -half, maxX: -half + depth, minY: half - depth, maxY: half, color: CONFIG.teams.colors[2] });
+      bases.push({ minX: half - depth, maxX: half, minY: half - depth, maxY: half, color: CONFIG.teams.colors[3] });
+    }
 
-    const baseRadius = teamCount === 2 ? CONFIG.teams.baseRadius2 : CONFIG.teams.baseRadius4;
     for (const base of bases) {
       // Parse hex color to rgba
       const hex = base.color.replace("#", "");
@@ -234,17 +234,39 @@ export class Renderer {
       const g = parseInt(hex.substring(2, 4), 16);
       const b = parseInt(hex.substring(4, 6), 16);
 
+      const w = base.maxX - base.minX;
+      const h = base.maxY - base.minY;
+
       // Fill the base zone
       ctx.fillStyle = `rgba(${r},${g},${b},0.12)`;
-      ctx.beginPath();
-      ctx.arc(base.x, base.y, baseRadius, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.fillRect(base.minX, base.minY, w, h);
 
-      // Draw border
-      ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
+      // Draw border (inner edge only — the edge facing the arena center)
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.5)`;
       ctx.lineWidth = 4 / (ctx.getTransform().a || 1);
       ctx.beginPath();
-      ctx.arc(base.x, base.y, baseRadius, 0, Math.PI * 2);
+      if (teamCount === 2) {
+        // Draw the inner horizontal edge
+        const innerY = base.minY < 0 ? base.maxY : base.minY;
+        ctx.moveTo(base.minX, innerY);
+        ctx.lineTo(base.maxX, innerY);
+      } else {
+        // Draw the two inner edges (facing center)
+        if (base.maxX < 0) {
+          ctx.moveTo(base.maxX, base.minY);
+          ctx.lineTo(base.maxX, base.maxY);
+        } else {
+          ctx.moveTo(base.minX, base.minY);
+          ctx.lineTo(base.minX, base.maxY);
+        }
+        if (base.maxY < 0) {
+          ctx.moveTo(base.minX, base.maxY);
+          ctx.lineTo(base.maxX, base.maxY);
+        } else {
+          ctx.moveTo(base.minX, base.minY);
+          ctx.lineTo(base.maxX, base.minY);
+        }
+      }
       ctx.stroke();
     }
   }
