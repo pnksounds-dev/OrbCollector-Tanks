@@ -21,13 +21,19 @@ import {
 import { getClass } from "../game/TankClasses";
 import type { Input } from "../game/Input";
 import { angleTo, clamp } from "../lib/math";
+import { EffectSystem } from "./EffectSystem";
+
+const AUTO_SPIN_RATE = Math.PI * 2 / 6;
 
 export class MovementSystem {
+  private splashTimer = 0;
+
   update(world: ECWorld, dt: number, input: typeof Input, playerId: EntityId): void {
     this.updateTank(world, dt, input, playerId);
     this.updateShapes(world, dt);
     this.updateBullets(world, dt);
     this.updateParticles(world, dt);
+    if (this.splashTimer > 0) this.splashTimer -= dt;
   }
 
   private updateTank(
@@ -41,8 +47,12 @@ export class MovementSystem {
     const tank = world.getComponent<TankComponent>(playerId, C.Tank);
     if (!pos || !vel || !tank) return;
 
-    // Aim barrel at mouse (world coords)
-    pos.angle = angleTo(pos.x, pos.y, input.world.x, input.world.y);
+    // Aim barrel at mouse (world coords) or auto-spin
+    if (input.autoSpin) {
+      pos.angle += AUTO_SPIN_RATE * dt;
+    } else {
+      pos.angle = angleTo(pos.x, pos.y, input.world.x, input.world.y);
+    }
 
     // Movement: WASD normalized × speed (modified by Movement Speed stat + class mult)
     const [dx, dy] = input.moveVector();
@@ -58,8 +68,14 @@ export class MovementSystem {
 
     // Boundary clamp (square arena)
     const half = CONFIG.worldHalf - tank.bodyRadius;
+    const prevX = pos.x;
+    const prevY = pos.y;
     pos.x = clamp(pos.x, -half, half);
     pos.y = clamp(pos.y, -half, half);
+    if ((pos.x !== prevX || pos.y !== prevY) && this.splashTimer <= 0) {
+      EffectSystem.spawnWaterSplash(world, pos.x, pos.y);
+      this.splashTimer = 0.2;
+    }
 
     // Regen
     if (tank.hp < tank.maxHp) {

@@ -291,21 +291,29 @@ respawn.
 
 ### Phase 2+ (future, not built now)
 
-- **Class upgrades** at level 15/30/45 (twin, sniper, machine gun, flank guard…)
-- **AI enemy tanks** (bots that farm shapes and hunt the player)
-- **Alpha pentagon + pentagon nest** (high-value central zone)
+- ~~**Class upgrades** at level 15/30/45~~ ✅ Done (Phase 3)
+- ~~**AI enemy tanks** (bots that farm shapes and hunt the player)~~ ✅ Done (Phase 4)
+- ~~**Alpha pentagon + pentagon nest**~~ ✅ Done
+- ~~**Leaderboard**~~ ✅ Done
+- ~~**Team game modes** (2TDM, 4TDM)~~ ✅ Done (Phase 5)
+- ~~**Bot AI overhaul** (roles, military tactics, smooth steering)~~ ✅ Done (Phases 6–8)
+- ~~**Team bases top/bottom** (diep.io layout)~~ ✅ Done (Phase 9a)
+- **diep.io keybinds** (E auto-fire, C auto-spin, Shift special, Enter spawn) — Phase 9b
+- **FX sprite effects** (explosion, blood, smoke, bullet trails, shield, phaser, water) — Phase 9c
 - **Multiplayer** via the undergrowth relay pattern (RoomClient + state sync)
 - **Account + coin persistence** via the demo's forum-OAuth + Supabase pattern
 - **Svelte UI migration** if the menu/stat panel grows complex
-- **Leaderboard** (top 10 by score this session)
 
 ---
 
-## 5. Controls + UI spec (Phase 1)
+## 5. Controls + UI spec
+
+### 5.1 Core controls (Phase 1)
 
 | Input | Action |
 |---|---|
 | W / A / S / D | Move tank (world-relative, not aim-relative) |
+| Arrow keys | Move tank (alt, interchangeable with WASD) |
 | Mouse move | Aim barrel toward cursor |
 | Left mouse (hold) | Fire bullets |
 | Space (hold) | Fire bullets (alt) |
@@ -313,6 +321,30 @@ respawn.
 | 1 – 8 | Spend a stat point on stat N |
 | Click stat row | Spend a point on that stat |
 | Esc | Pause (future) |
+| Backtick | Toggle dev panel |
+
+### 5.2 diep.io keybinds (Phase 9b)
+
+| Input | Action | Notes |
+|---|---|---|
+| **E** | Toggle auto-fire | When enabled, tank fires continuously without holding mouse/space |
+| **C** | Toggle auto-spin | Barrel rotates at 60°/sec instead of tracking mouse |
+| **Shift** (hold) | Secondary fire / special | Right-click equivalent — drone repel, scope, etc. |
+| **Right-click** (hold) | Secondary fire / special | Same as Shift |
+| **Enter** | Start game / respawn | On menu/death screen, starts or respawns the tank |
+| **Y** (hold) | Show upgrade tree | Displays class upgrade tree overlay |
+
+**Auto-fire (E):** Toggles a flag that makes the tank fire continuously as if
+the fire button were held. Pressing E again disables it. When auto-fire is on,
+left-click/space still work but are redundant.
+
+**Auto-spin (C):** Toggles a flag that makes the barrel rotate at 60°/sec
+(6 seconds per full rotation) instead of tracking the mouse. Pressing C again
+disables it. Mouse aim resumes when auto-spin is off.
+
+**Implementation:** Both flags live on the `Input` module. `MovementSystem`
+checks `autoSpin` to override the barrel angle, and `CombatSystem`/`Game.update`
+checks `autoFire` to force the fire flag true.
 
 **HUD layout:**
 - Bottom-center: `[Level N]  [XP bar]  [Score]`

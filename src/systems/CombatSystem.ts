@@ -28,6 +28,7 @@ import type { AudioManager } from "../audio/AudioManager";
 import type { Storage } from "../game/Storage";
 import { Input } from "../game/Input";
 import { circlesOverlap } from "../lib/math";
+import { EffectSystem } from "./EffectSystem";
 
 export class CombatSystem {
   private audio: AudioManager;
@@ -51,7 +52,7 @@ export class CombatSystem {
     const tank = world.getComponent<TankComponent>(playerId, C.Tank);
     if (!pos || !tank) return;
 
-    if (Input.fire && tank.fireCooldown <= 0) {
+    if ((Input.fire || Input.autoFire) && tank.fireCooldown <= 0) {
       this.fireTank(world, playerId, pos, tank);
     }
   }
@@ -136,6 +137,7 @@ export class CombatSystem {
           shape.hp -= bullet.damage;
           bullet.penetration -= 1;
           this.audio.play("hit");
+          EffectSystem.spawnHit(world, bpos.x, bpos.y);
 
           if (bullet.penetration < 0) {
             bulletsToDestroy.push(bid);
@@ -188,6 +190,8 @@ export class CombatSystem {
           tank.hp -= bullet.damage;
           bullet.penetration -= 1;
           this.audio.play("hit");
+          EffectSystem.spawnHit(world, bpos.x, bpos.y);
+          EffectSystem.spawnBlood(world, tpos.x, tpos.y);
 
           if (bullet.penetration < 0) {
             bulletsToDestroy.push(bid);
@@ -319,6 +323,7 @@ export class CombatSystem {
 
     const pos = world.getComponent<PositionComponent>(shapeId, C.Position);
     if (pos) {
+      EffectSystem.spawnShapePop(world, pos.x, pos.y);
       const count = CONFIG.particleCount;
       const cfg = CONFIG.shapes[shape.kind];
       for (let i = 0; i < count; i++) {
@@ -354,6 +359,8 @@ export class CombatSystem {
     let color = "#00b2e1";
     const botAi = world.getComponent<{ color: string }>(tankId, "bot_ai");
     if (botAi) color = botAi.color;
+
+    EffectSystem.spawnExplosion(world, pos.x, pos.y, 1.0);
 
     // Bigger particle burst for tank deaths
     const count = CONFIG.particleCount * 3;

@@ -15,6 +15,7 @@ import {
   type ShapeComponent,
   type BulletComponent,
   type ParticleComponent,
+  type EffectComponent,
 } from "../ecs/components";
 import { BOT, BOT_AI, type BotAIComponent } from "../systems/BotAISystem";
 import type { TeamComponent } from "../ecs/components";
@@ -24,10 +25,12 @@ import { getBarrels } from "../game/TankClasses";
 export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private orbSprites: Record<string, HTMLImageElement> = {};
+  private fxSprites: Record<string, HTMLImageElement> = {};
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
     this.loadSprites();
+    this.loadFxSprites();
   }
 
   private loadSprites(): void {
@@ -42,6 +45,57 @@ export class Renderer {
 
   getOrbSprite(size: string): HTMLImageElement | null {
     const img = this.orbSprites[size];
+    return img && img.complete && img.naturalWidth > 0 ? img : null;
+  }
+
+  private loadFxSprites(): void {
+    const fxList: { folder: string; name: string }[] = [
+      { folder: "explosion", name: "Explosion" },
+      { folder: "explosion", name: "Explosion2" },
+      { folder: "explosion", name: "small" },
+      { folder: "explosion", name: "Debris1" },
+      { folder: "explosion", name: "Debris2" },
+      { folder: "explosion", name: "Debris3" },
+      { folder: "blood", name: "blood_drip1" },
+      { folder: "blood", name: "blood_drip2" },
+      { folder: "blood", name: "blood_drip3" },
+      { folder: "blood", name: "blood_drip4" },
+      { folder: "bullet_trail", name: "bulletTrail1" },
+      { folder: "bullet_trail", name: "bulletTrail2" },
+      { folder: "bullet_trail", name: "bulletTrail3" },
+      { folder: "bullet_trail", name: "bulletTrail4" },
+      { folder: "bullet_trail", name: "bulletTrail5" },
+      { folder: "smoke", name: "smoke1" },
+      { folder: "smoke", name: "smoke2" },
+      { folder: "smoke", name: "smoke3" },
+      { folder: "smoke", name: "smoke4" },
+      { folder: "smoke", name: "smoke5" },
+      { folder: "smoke", name: "smoke6" },
+      { folder: "smoke", name: "smoke7" },
+      { folder: "smoke", name: "smoke8" },
+      { folder: "smoke", name: "smoke9" },
+      { folder: "shield", name: "ShieldDamageEffect" },
+      { folder: "phaser", name: "PhaserHit1" },
+      { folder: "phaser", name: "PhaserHit2" },
+      { folder: "phaser", name: "PhaserHit3" },
+      { folder: "phaser", name: "PhaserHit4" },
+      { folder: "phaser", name: "PhaserHit5" },
+      { folder: "shipengine", name: "Trail1" },
+      { folder: "shipengine", name: "Trail2" },
+      { folder: "shipengine", name: "Trail3" },
+      { folder: "shipengine", name: "Trail4" },
+      { folder: "shipengine", name: "Trail5" },
+      { folder: "water", name: "WaterDroplet1" },
+    ];
+    for (const fx of fxList) {
+      const img = new Image();
+      img.src = `/FX/${fx.folder}/${fx.name}.png`;
+      this.fxSprites[fx.name] = img;
+    }
+  }
+
+  getFxSprite(name: string): HTMLImageElement | null {
+    const img = this.fxSprites[name];
     return img && img.complete && img.naturalWidth > 0 ? img : null;
   }
 
@@ -68,6 +122,7 @@ export class Renderer {
     this.drawBullets(world, camera);
     this.drawParticles(world, camera);
     this.drawAllTanks(world, playerId);
+    this.drawEffects(world, camera);
 
     ctx.restore();
   }
@@ -384,7 +439,66 @@ export class Renderer {
         ctx.arc(pos.x, pos.y, tank.bodyRadius + 6, 0, Math.PI * 2);
         ctx.stroke();
         ctx.restore();
+
+        // Pulsing shield sprite
+        const shieldSprite = this.getFxSprite("ShieldDamageEffect");
+        if (shieldSprite) {
+          const pulse = 1 + 0.15 * Math.sin(performance.now() / 100);
+          const r = (tank.bodyRadius + 10) * pulse;
+          const s = r * 2;
+          ctx.save();
+          ctx.globalAlpha = 0.4 + 0.2 * Math.sin(performance.now() / 100);
+          ctx.drawImage(shieldSprite, pos.x - r, pos.y - r, s, s);
+          ctx.restore();
+        }
       }
+    }
+  }
+
+  private drawEffects(world: ECWorld, camera: Camera): void {
+    const ctx = this.ctx;
+    const scale = camera.effectiveScale;
+    const halfW = camera.viewW / (2 * scale);
+    const halfH = camera.viewH / (2 * scale);
+    const left = camera.cx - halfW;
+    const right = camera.cx + halfW;
+    const top = camera.cy - halfH;
+    const bottom = camera.cy + halfH;
+
+    const ids = world.query(C.Position, C.Effect);
+    for (const id of ids) {
+      const pos = world.getComponent<PositionComponent>(id, C.Position)!;
+      const fx = world.getComponent<EffectComponent>(id, C.Effect)!;
+
+      // Cull off-screen effects
+      const maxDim = Math.max(fx.scale * 128, 128);
+      if (
+        pos.x < left - maxDim ||
+        pos.x > right + maxDim ||
+        pos.y < top - maxDim ||
+        pos.y > bottom + maxDim
+      ) {
+        continue;
+      }
+
+      const sprite = this.getFxSprite(fx.sprite);
+      if (!sprite) continue;
+
+      const lifeRatio = fx.life / fx.maxLife;
+      const alpha = fx.fadeOut ? lifeRatio : 1;
+      const drawScale = fx.growOut
+        ? fx.scale * (1 + (1 - lifeRatio) * 2)
+        : fx.scale;
+
+      const w = sprite.naturalWidth * drawScale;
+      const h = sprite.naturalHeight * drawScale;
+
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+      ctx.translate(pos.x, pos.y);
+      ctx.rotate(fx.rotation);
+      ctx.drawImage(sprite, -w / 2, -h / 2, w, h);
+      ctx.restore();
     }
   }
 }

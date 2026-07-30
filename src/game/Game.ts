@@ -23,6 +23,7 @@ import { MovementSystem } from "../systems/MovementSystem";
 import { CombatSystem } from "../systems/CombatSystem";
 import { SpawnSystem } from "../systems/SpawnSystem";
 import { LevelSystem } from "../systems/LevelSystem";
+import { EffectSystem } from "../systems/EffectSystem";
 import {
   BotAISystem,
   createBotEntity,
@@ -80,6 +81,7 @@ export class Game {
   spawns: SpawnSystem;
   level: LevelSystem;
   botAI: BotAISystem;
+  effects: EffectSystem;
 
   playerId: EntityId | null = null;
   playerName: string = "Player";
@@ -104,6 +106,7 @@ export class Game {
     this.spawns = new SpawnSystem();
     this.level = new LevelSystem(this.audio);
     this.botAI = new BotAISystem();
+    this.effects = new EffectSystem();
 
     this.hud = new HUD(this);
     this.menu = new Menu(this);
@@ -312,6 +315,7 @@ export class Game {
     this.spawns.update(this.world, dt, this.camera);
     this.pentagonNest.update(this.world, dt);
     this.level.update(this.world, dt, this.playerId);
+    this.effects.update(this.world, dt);
 
     // Maintain bot population (remove dead, spawn new)
     const modeCfg = CONFIG.gameModes[this.gameMode];
@@ -370,6 +374,15 @@ export class Game {
     }
     if (this.input.statSpend >= 0) {
       this.input.statSpend = -1;
+    }
+    if (this.input.enterPressed) {
+      if (this.state === "menu") {
+        this.startGame(this.gameMode);
+        this.startMenu.hide();
+      } else if (this.state === "dead") {
+        this.respawn();
+      }
+      this.input.enterPressed = false;
     }
   }
 

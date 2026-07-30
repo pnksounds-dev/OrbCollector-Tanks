@@ -11,6 +11,8 @@ import { STAT_COUNT } from "../types";
 import { CONFIG } from "../config";
 
 // Component name constants
+export const EFFECT = "effect";
+
 export const C = {
   Position: "position",
   Velocity: "velocity",
@@ -20,6 +22,7 @@ export const C = {
   Player: "player",
   Particle: "particle",
   Team: "team",
+  Effect: EFFECT,
 } as const;
 
 // ---- Component interfaces ----
@@ -104,6 +107,29 @@ export interface PlayerComponent {
 export interface TeamComponent {
   /** Team index: 0 = blue, 1 = red, 2 = green, 3 = purple. -1 = no team (FFA). */
   id: number;
+}
+
+export interface EffectComponent {
+  /** Sprite image key (loaded by renderer). */
+  sprite: string;
+  /** Current life in seconds. */
+  life: number;
+  /** Maximum life in seconds (for alpha/scale interpolation). */
+  maxLife: number;
+  /** Velocity X (world units/sec). */
+  vx: number;
+  /** Velocity Y (world units/sec). */
+  vy: number;
+  /** Base scale (sprite draw size relative to natural size). */
+  scale: number;
+  /** Rotation in radians. */
+  rotation: number;
+  /** Rotation speed (rad/sec). */
+  rotSpeed: number;
+  /** Whether the effect fades out as life decreases. */
+  fadeOut: boolean;
+  /** Whether the effect grows as life decreases. */
+  growOut: boolean;
 }
 
 // ---- Factory helpers ----
@@ -221,6 +247,38 @@ export function createParticleEntity(
     maxLife: life,
     radius,
     color,
+  });
+  return id;
+}
+
+/** Create an FX sprite effect at a position. */
+export function createEffectEntity(
+  world: ECWorld,
+  x: number,
+  y: number,
+  sprite: string,
+  vx: number,
+  vy: number,
+  life: number,
+  scale: number,
+  rotation: number,
+  rotSpeed: number,
+  fadeOut: boolean,
+  growOut: boolean,
+): EntityId {
+  const id = world.createEntity();
+  world.addComponent<PositionComponent>(id, C.Position, { x, y, angle: rotation });
+  world.addComponent<EffectComponent>(id, C.Effect, {
+    sprite,
+    life,
+    maxLife: life,
+    vx,
+    vy,
+    scale,
+    rotation,
+    rotSpeed,
+    fadeOut,
+    growOut,
   });
   return id;
 }

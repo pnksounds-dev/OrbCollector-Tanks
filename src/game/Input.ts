@@ -13,6 +13,14 @@ export const Input = {
   world: { x: 0, y: 0 },
   /** Fire trigger (left mouse or Space). */
   fire: false,
+  /** Auto-fire toggle (E key). When true, tank fires continuously. */
+  autoFire: false,
+  /** Auto-spin toggle (C key). When true, barrel rotates at 60°/sec. */
+  autoSpin: false,
+  /** Secondary fire/special (Shift or right mouse). */
+  secondary: false,
+  /** Enter key edge (set on keydown, cleared by Game after handling). */
+  enterPressed: false,
   /** Movement keys held. */
   up: false,
   down: false,
@@ -38,11 +46,17 @@ export const Input = {
     window.addEventListener("mousedown", (e) => {
       if (isDevUI(e.target)) return;
       if (e.button === 0) this.fire = true;
+      if (e.button === 2) this.secondary = true;
     });
 
     window.addEventListener("mouseup", (e) => {
       if (isDevUI(e.target)) return;
       if (e.button === 0) this.fire = false;
+      if (e.button === 2) this.secondary = false;
+    });
+
+    window.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
     });
 
     window.addEventListener("keydown", (e) => {
@@ -67,6 +81,19 @@ export const Input = {
         case "Space":
           this.fire = true;
           e.preventDefault();
+          break;
+        case "KeyE":
+          this.autoFire = !this.autoFire;
+          break;
+        case "KeyC":
+          this.autoSpin = !this.autoSpin;
+          break;
+        case "ShiftLeft":
+        case "ShiftRight":
+          this.secondary = true;
+          break;
+        case "Enter":
+          this.enterPressed = true;
           break;
         case "Backquote":
           this.devToggle = true;
@@ -104,6 +131,10 @@ export const Input = {
           break;
         case "Space":
           this.fire = false;
+          break;
+        case "ShiftLeft":
+        case "ShiftRight":
+          this.secondary = false;
           break;
       }
     });
