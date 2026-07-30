@@ -19,6 +19,7 @@ export class HUD {
   private levelEl: HTMLElement;
   private xpFillEl: HTMLElement;
   private scoreEl: HTMLElement;
+  private bestEl: HTMLElement;
   private statsEl: HTMLElement;
   private statRows: HTMLElement[] = [];
   private classPanel: HTMLElement;
@@ -30,6 +31,7 @@ export class HUD {
     this.levelEl = document.getElementById("hudLevel")!;
     this.xpFillEl = document.getElementById("hudXpFill")!;
     this.scoreEl = document.getElementById("hudScore")!;
+    this.bestEl = document.getElementById("hudBest")!;
     this.statsEl = document.getElementById("hudStats")!;
     this.classPanel = document.createElement("div");
     this.classPanel.className = "class-panel hidden";
@@ -48,6 +50,12 @@ export class HUD {
 
   show(): void {
     this.root.classList.remove("hidden");
+    // Show best score if there is one
+    if (this.game.storage.highScore > 0) {
+      this.bestEl.classList.remove("hidden");
+    } else {
+      this.bestEl.classList.add("hidden");
+    }
   }
 
   hide(): void {
@@ -154,6 +162,7 @@ export class HUD {
 
     this.levelEl.textContent = "L" + tank.level;
     this.scoreEl.textContent = String(Math.floor(tank.xp));
+    this.bestEl.textContent = "Best: " + this.game.storage.highScore;
 
     // XP bar: progress toward next level
     const needed = this.game.level.xpForNextLevel(tank.level);

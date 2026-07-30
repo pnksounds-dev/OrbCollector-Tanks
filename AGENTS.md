@@ -182,7 +182,38 @@ tank-vs-tank combat, a leaderboard, and a start menu.
 ### Start menu (`src/ui/StartMenu.ts`)
 - Full-screen overlay with splash art background, "ORB COLLECTOR: TANKS" title, Play button,
   collapsible How-to-Play section, mute toggle
-- Callback-based: `new StartMenu(onPlay, onMuteToggle, initialMuted)` — no direct Game/Storage import
+- Callback-based: `new StartMenu(onPlay, onMuteToggle, initialMuted, onNameChange?)` — no direct Game/Storage import
 - Self-contained: all DOM built programmatically, CSS injected via `<style>` tag with `sm-` prefix
-- **Integration:** Game.init() creates and shows the StartMenu. Play button calls Game.startGame().
-  Game no longer auto-starts — the menu appears first.
+- **Integration:** Game.init() creates and shows the StartMenu. Play button calls Game.startGame()
+  and hides the menu. Game no longer auto-starts — the menu appears first.
+- Nickname input persisted to localStorage (`orb_collector_tanks_name`)
+
+## Phase 3 — Complete
+
+### Account persistence (`src/game/Storage.ts`)
+- Settings interface extended: `highScore`, `coins`, `totalGames`, `totalKills`
+- `setHighScore(v)` only updates if v > current; `addCoins(v)`, `incrementGames()`, `addKill()`
+- CombatSystem now takes a Storage ref and calls `addKill()` on player shape kills
+- Game.onDeath records high score + coins (score / 10)
+
+### Minimap enhancement (`src/render/Minimap.ts`)
+- Shows bot tanks as colored dots (using bot_ai color)
+- Shows alpha pentagon as a dark blue dot
+- Shows regular pentagons as small blue dots
+- Player dot has a white outline for visibility
+
+### Arena boundary polish (`src/render/Renderer.ts`)
+- Out-of-bounds zone filled with semi-transparent dark red/brown (`rgba(80,30,30,0.3)`)
+- White border line (3px screen-space, scale-independent)
+- L-shaped corner markers at all four corners
+
+## Phase 4 — Complete
+
+### Death screen + HUD stats
+- Death screen now shows Best score and total Coins alongside current score/level
+- HUD bottom bar shows "Best: N" when a high score exists
+- Main Menu button on death screen returns to start menu
+
+### Balance tuning
+- Spawn invulnerability increased from 2.0s to 3.0s
+- Coins earned = score / 10 (rounded down)

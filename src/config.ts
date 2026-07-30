@@ -87,7 +87,7 @@ export const CONFIG = {
     baseBodyDamage: 10,
     baseSpeed: 220,
     baseFireRate: 1.5, // shots per second at reload 0
-    spawnInvuln: 2.0,
+    spawnInvuln: 3.0,
     statMax: 7,
     statRegenPerPoint: 2.0,
     statMaxHpPerPoint: 20,

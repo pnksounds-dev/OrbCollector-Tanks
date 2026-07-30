@@ -101,6 +101,24 @@ html, body {
   text-align: center;
 }
 
+.hud-best {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--diep-text);
+  background: var(--hud-bg);
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--hud-border);
+  opacity: 0.8;
+}
+
+/* Death screen best/coins line */
+.death-best {
+  font-size: 14px;
+  color: #666;
+  margin: 6px 0 12px;
+}
+
 /* Stat panel (left side) */
 .hud-stats {
   position: absolute;

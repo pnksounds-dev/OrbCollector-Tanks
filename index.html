@@ -12,11 +12,12 @@
 
   <!-- In-game HUD (populated by src/ui/HUD.ts) -->
   <div id="hud" class="hidden">
-    <!-- Bottom: level + XP bar + score -->
+    <!-- Bottom: level + XP bar + score + best -->
     <div id="hudBottom">
       <span id="hudLevel" class="hud-level">L1</span>
       <div id="hudXpBar" class="hud-xp-bar"><div id="hudXpFill" class="hud-xp-fill"></div></div>
       <span id="hudScore" class="hud-score">0</span>
+      <span id="hudBest" class="hud-best hidden">Best: 0</span>
     </div>
     <!-- Left: stat panel -->
     <div id="hudStats" class="hud-stats"></div>
@@ -30,6 +31,7 @@
       <h2>You died</h2>
       <p class="death-score">Score: <span id="deathScore">0</span></p>
       <p class="death-level">Level: <span id="deathLevel">1</span></p>
+      <p class="death-best">Best: <span id="deathBest">0</span> · Coins: <span id="deathCoins">0</span></p>
       <button id="respawnBtn" class="btn btn-primary">Respawn</button>
       <button id="toMenuBtn" class="btn">Main Menu</button>
     </div>

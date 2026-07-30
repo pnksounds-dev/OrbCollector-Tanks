@@ -1,4 +1,4 @@
-/** Menu: death screen with score/level display and respawn / main menu buttons. */
+/** Menu: death screen with score/level/best/coins display and buttons. */
 
 import type { Game } from "../game/Game";
 
@@ -7,6 +7,8 @@ export class Menu {
   private deathScreen: HTMLElement;
   private deathScoreEl: HTMLElement;
   private deathLevelEl: HTMLElement;
+  private deathBestEl: HTMLElement;
+  private deathCoinsEl: HTMLElement;
   private respawnBtn: HTMLElement;
   private toMenuBtn: HTMLElement;
 
@@ -15,6 +17,8 @@ export class Menu {
     this.deathScreen = document.getElementById("deathScreen")!;
     this.deathScoreEl = document.getElementById("deathScore")!;
     this.deathLevelEl = document.getElementById("deathLevel")!;
+    this.deathBestEl = document.getElementById("deathBest")!;
+    this.deathCoinsEl = document.getElementById("deathCoins")!;
     this.respawnBtn = document.getElementById("respawnBtn")!;
     this.toMenuBtn = document.getElementById("toMenuBtn")!;
   }
@@ -32,6 +36,8 @@ export class Menu {
   showDeath(score: number, level: number): void {
     this.deathScoreEl.textContent = String(score);
     this.deathLevelEl.textContent = String(level);
+    this.deathBestEl.textContent = String(this.game.storage.highScore);
+    this.deathCoinsEl.textContent = String(this.game.storage.coins);
     this.deathScreen.classList.remove("hidden");
   }
 
