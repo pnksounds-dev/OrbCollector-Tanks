@@ -1,0 +1,232 @@
+/** Component name constants, interfaces, and entity factory helpers.
+ *
+ * Components are plain data objects stored per-entity in the ECWorld. Systems
+ * query the world and mutate these. Factories create a fully-wired entity in
+ * one call.
+ */
+
+import type { ECWorld, EntityId } from "./World";
+import type { ShapeKind, StatIndex } from "../types";
+import { STAT_COUNT } from "../types";
+import { CONFIG } from "../config";
+
+// Component name constants
+export const C = {
+  Position: "position",
+  Velocity: "velocity",
+  Tank: "tank",
+  Shape: "shape",
+  Bullet: "bullet",
+  Player: "player",
+  Particle: "particle",
+} as const;
+
+// ---- Component interfaces ----
+
+export interface PositionComponent {
+  x: number;
+  y: number;
+  /** Facing angle in radians (barrel aim for tanks, travel dir for bullets). */
+  angle: number;
+}
+
+export interface VelocityComponent {
+  vx: number;
+  vy: number;
+}
+
+export interface TankComponent {
+  bodyRadius: number;
+  barrelLength: number;
+  barrelWidth: number;
+  hp: number;
+  maxHp: number;
+  regen: number; // hp per second
+  /** Contact damage dealt when ramming. */
+  bodyDamage: number;
+  /** Total XP earned (also the score). */
+  xp: number;
+  level: number;
+  /** Unspent stat points. */
+  statPoints: number;
+  /** Points spent per stat, indexed 0–7. */
+  stats: number[];
+  /** Fire cooldown timer in seconds (counts down; fires at 0 if trigger held). */
+  fireCooldown: number;
+  /** Invulnerability timer after spawn (seconds). */
+  invuln: number;
+  /** Current tank class id (from TankClasses). Defaults to "basic". */
+  classId: string;
+}
+
+export interface ShapeComponent {
+  kind: ShapeKind;
+  radius: number;
+  hp: number;
+  maxHp: number;
+  xp: number;
+  /** Current rotation in radians. */
+  rotation: number;
+  /** Rotation speed in rad/s. */
+  rotSpeed: number;
+  /** Contact damage dealt to a tank that rams it. */
+  bodyDamage: number;
+}
+
+export interface BulletComponent {
+  radius: number;
+  damage: number;
+  /** Remaining pierce targets the bullet can hit before dying. */
+  penetration: number;
+  /** Remaining lifetime in seconds. */
+  life: number;
+  /** Entity ID of the tank that fired (for XP attribution). */
+  ownerId: EntityId;
+}
+
+export interface ParticleComponent {
+  /** Orb sprite size key: 'tiny' | 'small' | 'medium' | 'large' | 'extraLarge'. */
+  size: string;
+  /** Remaining lifetime in seconds. */
+  life: number;
+  maxLife: number;
+  /** Visual radius in world units. */
+  radius: number;
+  /** Tint color (hex). */
+  color: string;
+}
+
+export interface PlayerComponent {
+  /** Marker component — the player-controlled tank. */
+}
+
+// ---- Factory helpers ----
+
+/** Create a player tank at the given world position. */
+export function createTankEntity(
+  world: ECWorld,
+  x: number,
+  y: number,
+): EntityId {
+  const id = world.createEntity();
+  const t = CONFIG.tank;
+  const stats = new Array<number>(STAT_COUNT).fill(0);
+  world.addComponent<PositionComponent>(id, C.Position, { x, y, angle: 0 });
+  world.addComponent<VelocityComponent>(id, C.Velocity, { vx: 0, vy: 0 });
+  world.addComponent<TankComponent>(id, C.Tank, {
+    bodyRadius: t.baseBodyRadius,
+    barrelLength: t.baseBarrelLength,
+    barrelWidth: t.baseBarrelWidth,
+    hp: t.baseMaxHp,
+    maxHp: t.baseMaxHp,
+    regen: t.baseRegen,
+    bodyDamage: t.baseBodyDamage,
+    xp: 0,
+    level: 1,
+    statPoints: 0,
+    stats,
+    fireCooldown: 0,
+    invuln: t.spawnInvuln,
+    classId: "basic",
+  });
+  world.addComponent<PlayerComponent>(id, C.Player, {});
+  return id;
+}
+
+/** Create a shape of the given kind at a world position. */
+export function createShapeEntity(
+  world: ECWorld,
+  kind: ShapeKind,
+  x: number,
+  y: number,
+): EntityId {
+  const id = world.createEntity();
+  const s = CONFIG.shapes[kind];
+  world.addComponent<PositionComponent>(id, C.Position, {
+    x,
+    y,
+    angle: Math.random() * Math.PI * 2,
+  });
+  world.addComponent<VelocityComponent>(id, C.Velocity, {
+    vx: (Math.random() - 0.5) * s.driftSpeed,
+    vy: (Math.random() - 0.5) * s.driftSpeed,
+  });
+  world.addComponent<ShapeComponent>(id, C.Shape, {
+    kind,
+    radius: s.radius,
+    hp: s.hp,
+    maxHp: s.hp,
+    xp: s.xp,
+    rotation: Math.random() * Math.PI * 2,
+    rotSpeed: (Math.random() - 0.5) * s.rotSpeedRange,
+    bodyDamage: s.bodyDamage,
+  });
+  return id;
+}
+
+/** Create a bullet fired from a tank. */
+export function createBulletEntity(
+  world: ECWorld,
+  x: number,
+  y: number,
+  angle: number,
+  speed: number,
+  damage: number,
+  penetration: number,
+  ownerId: EntityId,
+): EntityId {
+  const id = world.createEntity();
+  world.addComponent<PositionComponent>(id, C.Position, { x, y, angle });
+  world.addComponent<VelocityComponent>(id, C.Velocity, {
+    vx: Math.cos(angle) * speed,
+    vy: Math.sin(angle) * speed,
+  });
+  world.addComponent<BulletComponent>(id, C.Bullet, {
+    radius: CONFIG.bullet.radius,
+    damage,
+    penetration,
+    life: CONFIG.bullet.life,
+    ownerId,
+  });
+  return id;
+}
+
+/** Create a particle (XP orb burst) at a position. */
+export function createParticleEntity(
+  world: ECWorld,
+  x: number,
+  y: number,
+  vx: number,
+  vy: number,
+  size: string,
+  color: string,
+  life: number,
+  radius: number,
+): EntityId {
+  const id = world.createEntity();
+  world.addComponent<PositionComponent>(id, C.Position, { x, y, angle: 0 });
+  world.addComponent<VelocityComponent>(id, C.Velocity, { vx, vy });
+  world.addComponent<ParticleComponent>(id, C.Particle, {
+    size,
+    life,
+    maxLife: life,
+    radius,
+    color,
+  });
+  return id;
+}
+
+/** Spend a stat point on the given stat index for a tank entity. */
+export function spendStatPoint(
+  world: ECWorld,
+  tankId: EntityId,
+  stat: StatIndex,
+): boolean {
+  const tank = world.getComponent<TankComponent>(tankId, C.Tank);
+  if (!tank) return false;
+  if (tank.statPoints <= 0) return false;
+  if (tank.stats[stat] >= CONFIG.tank.statMax) return false;
+  tank.statPoints--;
+  tank.stats[stat]++;
+  return true;
+}

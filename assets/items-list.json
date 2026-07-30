@@ -1,0 +1,462 @@
+old file, can be used for information referencing
+{
+  "version": "1.0",
+  "items": [
+	{
+	  "id": "weapon_phaser",
+	  "name": "Phaser Beams",
+	  "description": "Standard issue phaser weapon. Fires concentrated energy beams.",
+	  "category": "weapon",
+	  "rarity": "common",
+	  "equippable": true,
+	  "equipment_slot": "weapon",
+	  "max_stack": 1,
+	  "value": 250,
+	  "weight": 2.5,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/PhaserBeams.png",
+	  "model_path": "res://scenes/weapons/FX_PhaserBeams.tscn",
+	  "properties": {
+		"damage": 15,
+		"fire_rate": 0.2,
+		"range": 500,
+		"energy_cost": 5,
+		"projectile_speed": 800,
+		"spread_angle": 2.0
+	  }
+	},
+	{
+	  "id": "weapon_auto_turret",
+	  "name": "Auto Turret",
+	  "description": "Automated defense turret that targets nearby enemies.",
+	  "category": "weapon",
+	  "rarity": "uncommon",
+	  "equippable": true,
+	  "equipment_slot": "weapon",
+	  "max_stack": 1,
+	  "value": 450,
+	  "weight": 8.0,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/AutoTurret.png",
+	  "properties": {
+		"damage": 8,
+		"fire_rate": 0.8,
+		"range": 400,
+		"targeting_angle": 180,
+		"deploy_time": 1.5,
+		"duration": 30.0
+	  }
+	},
+	{
+	  "id": "weapon_photon_torpedo",
+	  "name": "Photon Torpedo",
+	  "description": "Long-range torpedo with high impact and light splash.",
+	  "category": "weapon",
+	  "rarity": "rare",
+	  "equippable": true,
+	  "equipment_slot": "weapon",
+	  "max_stack": 1,
+	  "value": 650,
+	  "weight": 3.5,
+	  "icon_path": "res://assets/items/Weapons/Photon_Torpedo/PhotonTorpedoLingering.png",
+	  "model_path": "res://scenes/BulletProjectile.tscn",
+	  "properties": {
+		"damage": 40,
+		"fire_rate": 1.2,
+		"range": 900,
+		"projectile_speed": 700,
+		"splash_radius": 60,
+		"pierce": 2
+	  }
+	},
+	{
+	  "id": "weapon_ballistic_barrage",
+	  "name": "Ballistic Barrage",
+	  "description": "Rapid multi-shot barrage for crowd control.",
+	  "category": "weapon",
+	  "rarity": "uncommon",
+	  "equippable": true,
+	  "equipment_slot": "weapon",
+	  "max_stack": 1,
+	  "value": 520,
+	  "weight": 3.0,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/BallisticBarrage.png",
+	  "model_path": "res://scenes/BulletProjectile.tscn",
+	  "properties": {
+		"damage": 10,
+		"fire_rate": 0.2,
+		"burst_count": 5,
+		"spread_angle": 18.0,
+		"projectile_speed": 700,
+		"range": 450
+	  }
+	},
+	{
+	  "id": "consumable_health_pack",
+	  "name": "Health Pack",
+	  "description": "Restores 25 health when used.",
+	  "category": "consumable",
+	  "rarity": "common",
+	  "equippable": true,
+	  "equipment_slot": "consumable",
+	  "max_stack": 10,
+	  "value": 50,
+	  "weight": 0.5,
+	  "icon_path": "res://assets/items/Consumables/HealthIncrease.png",
+	  "properties": {
+		"heal_amount": 25,
+		"use_time": 1.0,
+		"cooldown": 5.0
+	  }
+	},
+	{
+	  "id": "consumable_health_increase",
+	  "name": "Health Increase",
+	  "description": "Restores 30% of maximum health on use.",
+	  "category": "consumable",
+	  "rarity": "uncommon",
+	  "equippable": true,
+	  "equipment_slot": "consumable",
+	  "max_stack": 5,
+	  "value": 120,
+	  "weight": 0.4,
+	  "icon_path": "res://assets/items/Consumables/HealthIncrease.png",
+	  "properties": {
+		"heal_percent": 30,
+		"use_time": 1.0,
+		"cooldown": 8.0
+	  }
+	},
+	{
+	  "id": "consumable_orbmaster",
+	  "name": "Orbmaster",
+	  "description": "Temporarily boosts orb damage and pulls nearby orbs to you.",
+	  "category": "consumable",
+	  "rarity": "rare",
+	  "equippable": true,
+	  "equipment_slot": "consumable",
+	  "max_stack": 3,
+	  "value": 220,
+	  "weight": 0.3,
+	  "icon_path": "res://assets/items/Passive/OrbBender.png",
+	  "properties": {
+		"orb_damage_bonus_percent": 50,
+		"orb_count_bonus": 2,
+		"duration": 15.0,
+		"cooldown": 25.0
+	  }
+	},
+	{
+	  "id": "passive_shield_booster",
+	  "name": "Shield Booster",
+	  "description": "Increases maximum shield capacity by 20%.",
+	  "category": "passive",
+	  "rarity": "rare",
+	  "equippable": true,
+	  "equipment_slot": "passive",
+	  "max_stack": 1,
+	  "value": 750,
+	  "weight": 1.5,
+	  "icon_path": "res://assets/items/ShipUpgrade/Shield_Increase.png",
+	  "properties": {
+		"shield_bonus_percent": 20,
+		"shield_regen_rate": 1.1
+	  }
+	},
+	{
+	  "id": "passive_shield",
+	  "name": "Shield",
+	  "description": "Generates a protective barrier that refreshes when not broken.",
+	  "category": "passive",
+	  "rarity": "uncommon",
+	  "equippable": true,
+	  "equipment_slot": "passive",
+	  "max_stack": 1,
+	  "value": 400,
+	  "weight": 1.2,
+	  "icon_path": "res://assets/items/ShipUpgrade/Shield.png",
+	  "properties": {
+		"shield_value": 50,
+		"refresh_cooldown": 10.0
+	  }
+	},
+	{
+	  "id": "passive_surgically_enhanced",
+	  "name": "Surgically Enhanced",
+	  "description": "Risk-reward augmentation: higher damage and crit, lower max health.",
+	  "category": "passive",
+	  "rarity": "rare",
+	  "equippable": true,
+	  "equipment_slot": "passive",
+	  "max_stack": 1,
+	  "value": 520,
+	  "weight": 1.0,
+	  "icon_path": "res://assets/items/ShipUpgrade/SurgicallyEnhanced.png",
+	  "properties": {
+		"damage_bonus_percent": 25,
+		"crit_chance_bonus_percent": 15,
+		"max_health_penalty_percent": 20
+	  }
+	},
+	{
+	  "id": "resource_metal_scrap",
+	  "name": "Metal Scrap",
+	  "description": "Common crafting material. Used for basic upgrades and repairs.",
+	  "category": "resource",
+	  "rarity": "common",
+	  "equippable": false,
+	  "max_stack": 999,
+	  "value": 5,
+	  "weight": 0.1,
+	  "icon_path": "res://assets/items/Resources/SpaceDebris/Resource_SpaceCraft_Debris_1.png"
+	},
+	{
+	  "id": "CandyCane",
+	  "name": "Candy Cane",
+	  "description": "Sweet treat that provides shield boost",
+	  "category": "consumable",
+	  "rarity": "common",
+	  "max_stack": 10,
+	  "value": 60,
+	  "icon_path": "res://assets/items/Consumables/CandyCane.png"
+	},
+	{
+	  "id": "BucketOfCoffee",
+	  "name": "Bucket of Coffee",
+	  "description": "Energy boost that increases speed temporarily",
+	  "category": "consumable",
+	  "rarity": "common",
+	  "max_stack": 5,
+	  "value": 75,
+	  "icon_path": "res://assets/items/Consumables/BucketOfCoffee.png"
+	},
+	{
+	  "id": "HealthIncrease",
+	  "name": "Health Pack",
+	  "description": "Medical supplies that restore health points",
+	  "category": "consumable",
+	  "rarity": "common",
+	  "max_stack": 10,
+	  "value": 50,
+	  "icon_path": "res://assets/items/Consumables/HealthIncrease.png"
+	},
+	{
+	  "id": "Luck",
+	  "name": "Lucky Charm",
+	  "description": "Increases critical hit chance for a duration",
+	  "category": "consumable",
+	  "rarity": "uncommon",
+	  "max_stack": 5,
+	  "value": 100,
+	  "icon_path": "res://assets/items/Consumables/Luck.png"
+	},
+	{
+	  "id": "BrokenHeart",
+	  "name": "Heart Repair",
+	  "description": "Repairs damaged systems and restores health",
+	  "category": "consumable",
+	  "rarity": "rare",
+	  "max_stack": 5,
+	  "value": 150,
+	  "icon_path": "res://assets/items/Consumables/BrokenHeart.png"
+	},
+	{
+	  "id": "FireWeapon1",
+	  "name": "Flamethrower",
+	  "description": "Short-range fire damage weapon",
+	  "category": "weapon",
+	  "rarity": "common",
+	  "max_stack": 1,
+	  "value": 200,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/FireWeapon1.png"
+	},
+	{
+	  "id": "PhaserBeams",
+	  "name": "Phaser Beams",
+	  "description": "Medium-range energy weapon",
+	  "category": "weapon",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 350,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/PhaserBeams.png"
+	},
+	{
+	  "id": "PhotonTorpedo",
+	  "name": "Photon Torpedo",
+	  "description": "Long-range torpedo with splash damage",
+	  "category": "weapon",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 500,
+	  "icon_path": "res://assets/items/Weapons/Photon_Torpedo/PhotonTorpedoLingering.png"
+	},
+	{
+	  "id": "BallisticBarrage",
+	  "name": "Ballistic Barrage",
+	  "description": "Rapid multi-shot barrage for crowd control",
+	  "category": "weapon",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 400,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/BallisticBarrage.png"
+	},
+	{
+	  "id": "DeathRay",
+	  "name": "Death Ray",
+	  "description": "High-damage focused beam weapon",
+	  "category": "weapon",
+	  "rarity": "epic",
+	  "max_stack": 1,
+	  "value": 800,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/DeathRay.png"
+	},
+	{
+	  "id": "ExplosiveMine",
+	  "name": "Explosive Mines",
+	  "description": "Deployable mines for area denial",
+	  "category": "weapon",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 450,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/ExplosiveMine.png"
+	},
+	{
+	  "id": "FreezeDamage1",
+	  "name": "Freeze Ray",
+	  "description": "Slows enemies with cold damage",
+	  "category": "weapon",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 325,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/FreezeDamage1.png"
+	},
+	{
+	  "id": "Torpedo",
+	  "name": "Torpedo",
+	  "description": "Standard torpedo weapon",
+	  "category": "weapon",
+	  "rarity": "common",
+	  "max_stack": 1,
+	  "value": 250,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/Torpedo.png"
+	},
+	{
+	  "id": "VoidMagic",
+	  "name": "Void Magic",
+	  "description": "Mysterious void-based weapon",
+	  "category": "weapon",
+	  "rarity": "epic",
+	  "max_stack": 1,
+	  "value": 750,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/VoidMagic.png"
+	},
+	{
+	  "id": "ElectricFieldDrive",
+	  "name": "Electric Field",
+	  "description": "Area-of-effect electric damage",
+	  "category": "weapon",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 425,
+	  "icon_path": "res://assets/items/Weapons/Item_Icon/ElectricFieldDrive.png"
+	},
+	{
+	  "id": "Shield",
+	  "name": "Shield Generator",
+	  "description": "Generates a protective barrier that refreshes when not broken",
+	  "category": "passive",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 300,
+	  "icon_path": "res://assets/items/ShipUpgrade/Shield.png"
+	},
+	{
+	  "id": "OrbBender",
+	  "name": "Orb Magnet",
+	  "description": "Pulls nearby orbs and buffs orb damage for a short time",
+	  "category": "passive",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 400,
+	  "icon_path": "res://assets/items/Passive/OrbBender.png"
+	},
+	{
+	  "id": "AladdinsCarpet",
+	  "name": "Flight Carpet",
+	  "description": "Increases movement speed and dodge chance",
+	  "category": "passive",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 350,
+	  "icon_path": "res://assets/items/Passive/AladdinsCarpet.png"
+	},
+	{
+	  "id": "PocketWatch",
+	  "name": "Time Dilation",
+	  "description": "Slows down nearby enemies temporarily",
+	  "category": "passive",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 450,
+	  "icon_path": "res://assets/items/Passive/PocketWatch.png"
+	},
+	{
+	  "id": "DeathInfluence",
+	  "name": "Death Influence",
+	  "description": "Increases damage dealt at low health",
+	  "category": "passive",
+	  "rarity": "epic",
+	  "max_stack": 1,
+	  "value": 600,
+	  "icon_path": "res://assets/items/Passive/DeathInfluence.png"
+	},
+	{
+	  "id": "LooseTooth",
+	  "name": "Vengeance",
+	  "description": "Reflects a portion of damage taken",
+	  "category": "passive",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 325,
+	  "icon_path": "res://assets/items/Passive/LooseTooth.png"
+	},
+	{
+	  "id": "ShellShocked",
+	  "name": "Shell Shock",
+	  "description": "Increases armor and damage resistance",
+	  "category": "passive",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 425,
+	  "icon_path": "res://assets/items/Passive/ShellShocked.png"
+	},
+	{
+	  "id": "TVRemote",
+	  "name": "Remote Control",
+	  "description": "Chance to confuse enemies on hit",
+	  "category": "passive",
+	  "rarity": "uncommon",
+	  "max_stack": 1,
+	  "value": 375,
+	  "icon_path": "res://assets/items/Passive/TVRemote.png"
+	},
+	{
+	  "id": "TheBell",
+	  "name": "Power Bell",
+	  "description": "Periodic damage area around player",
+	  "category": "passive",
+	  "rarity": "rare",
+	  "max_stack": 1,
+	  "value": 475,
+	  "icon_path": "res://assets/items/Passive/TheBell.png"
+	},
+	{
+	  "id": "WinXpLaptop",
+	  "name": "Hacking Laptop",
+	  "description": "Increases experience gain and coin collection",
+	  "category": "passive",
+	  "rarity": "epic",
+	  "max_stack": 1,
+	  "value": 550,
+	  "icon_path": "res://assets/items/Passive/WinXpLaptop.png"
+	}
+  ]
+}

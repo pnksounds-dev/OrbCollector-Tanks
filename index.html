@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Orb Collector: Tanks</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <!-- Game canvas -->
+  <canvas id="game"></canvas>
+
+  <!-- In-game HUD (populated by src/ui/HUD.ts) -->
+  <div id="hud" class="hidden">
+    <!-- Bottom: level + XP bar + score -->
+    <div id="hudBottom">
+      <span id="hudLevel" class="hud-level">L1</span>
+      <div id="hudXpBar" class="hud-xp-bar"><div id="hudXpFill" class="hud-xp-fill"></div></div>
+      <span id="hudScore" class="hud-score">0</span>
+    </div>
+    <!-- Left: stat panel -->
+    <div id="hudStats" class="hud-stats"></div>
+    <!-- Top-right: minimap -->
+    <canvas id="minimap" class="hud-minimap" width="160" height="160"></canvas>
+  </div>
+
+  <!-- Death screen -->
+  <div id="deathScreen" class="overlay hidden">
+    <div class="panel">
+      <h2>You died</h2>
+      <p class="death-score">Score: <span id="deathScore">0</span></p>
+      <p class="death-level">Level: <span id="deathLevel">1</span></p>
+      <button id="respawnBtn" class="btn btn-primary">Respawn</button>
+      <button id="toMenuBtn" class="btn">Main Menu</button>
+    </div>
+  </div>
+
+  <!-- Dev panel (toggled with backtick) -->
+  <div id="devPanel" class="dev-panel hidden"></div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
