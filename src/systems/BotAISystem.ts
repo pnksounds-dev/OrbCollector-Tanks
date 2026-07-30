@@ -40,6 +40,7 @@ import {
 import type { GameMode } from "../types";
 import { STAT_COUNT, STAT_MAX } from "../types";
 import { angleTo, clamp, dist, lerpAngle, normalizeAngle } from "../lib/math";
+import { hasBuff, updateBuffs } from "../game/BuffHelpers";
 
 // ---- Component names ----
 
@@ -281,6 +282,7 @@ export function createBotEntity(
     shield: t.baseMaxShield, maxShield: t.baseMaxShield,
     shieldRegen: t.baseShieldRegen, shieldFlash: 0,
     lastDamagerId: null,
+    buffs: new Map(),
     xp: 0, level, statPoints: 0, stats,
     fireCooldown: 0, invuln: t.spawnInvuln, classId: "basic",
   });
@@ -401,7 +403,8 @@ export class BotAISystem {
       if (distToPlayer > LOD_DISTANCE) {
         // Gentle wander for far bots — they drift organically
         ai.wanderAngle += (Math.random() - 0.5) * WANDER_RATE * dt;
-        const maxSpeed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
+        const speedMult = hasBuff(tank, "speed") ? 1.6 : 1.0;
+        const maxSpeed = (CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint) * speedMult;
         this.desiredVx = Math.cos(ai.wanderAngle) * maxSpeed * 0.4;
         this.desiredVy = Math.sin(ai.wanderAngle) * maxSpeed * 0.4;
         this.applyMovement(pos, vel, tank, dt, world, botId);
@@ -860,7 +863,8 @@ export class BotAISystem {
     ai: BotAIComponent,
     dt: number,
   ): { dx: number; dy: number } {
-    const maxSpeed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
+    const speedMult = hasBuff(tank, "speed") ? 1.6 : 1.0;
+    const maxSpeed = (CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint) * speedMult;
     const myTeam = world.getComponent<TeamComponent>(botId, C.Team);
     const myTeamId = myTeam ? myTeam.id : -1;
 
@@ -1024,11 +1028,13 @@ export class BotAISystem {
   ): void {
     if (!ai.fireFlag || tank.fireCooldown > 0) return;
 
-    const fireRate = CONFIG.tank.baseFireRate * (1 + tank.stats[6] * CONFIG.tank.statReloadPerPoint);
+    const rapidFireMult = hasBuff(tank, "rapidFire") ? 2.0 : 1.0;
+    const fireRate = CONFIG.tank.baseFireRate * (1 + tank.stats[6] * CONFIG.tank.statReloadPerPoint) * rapidFireMult;
     tank.fireCooldown = 1 / fireRate;
 
+    const damageBuffMult = hasBuff(tank, "damage") ? 1.5 : 1.0;
     const bulletSpeed = CONFIG.bullet.baseSpeed + tank.stats[3] * CONFIG.tank.statBulletSpeedPerPoint;
-    const bulletDamage = CONFIG.bullet.baseDamage + tank.stats[5] * CONFIG.tank.statBulletDamagePerPoint;
+    const bulletDamage = (CONFIG.bullet.baseDamage + tank.stats[5] * CONFIG.tank.statBulletDamagePerPoint) * damageBuffMult;
     const bulletPenetration = CONFIG.bullet.basePenetration + tank.stats[4] * CONFIG.tank.statBulletPenetrationPerPoint;
 
     const tipX = pos.x + Math.cos(pos.angle) * (tank.bodyRadius + tank.barrelLength);
@@ -1045,6 +1051,8 @@ export class BotAISystem {
     if (tank.fireCooldown > 0) tank.fireCooldown = Math.max(0, tank.fireCooldown - dt);
     if (tank.invuln > 0) tank.invuln = Math.max(0, tank.invuln - dt);
     if (tank.shieldFlash > 0) tank.shieldFlash = Math.max(0, tank.shieldFlash - dt);
+    // Prune expired buffs
+    updateBuffs(tank, performance.now());
   }
 
   private applyRegen(tank: TankComponent, dt: number): void {
@@ -1148,8 +1156,9 @@ export class BotAISystem {
       vel.vy *= 1 - Math.min(decel, 0.1);
     }
 
-    // Clamp to max speed
-    const maxSpeed = CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint;
+    // Clamp to max speed (with speed buff)
+    const speedBuffMult = hasBuff(tank, "speed") ? 1.6 : 1.0;
+    const maxSpeed = (CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint) * speedBuffMult;
     const speed = Math.hypot(vel.vx, vel.vy);
     if (speed > maxSpeed) {
       vel.vx = (vel.vx / speed) * maxSpeed;

@@ -29,11 +29,17 @@ import type { Storage } from "../game/Storage";
 import { Input } from "../game/Input";
 import { circlesOverlap } from "../lib/math";
 import { EffectSystem } from "./EffectSystem";
+import { applyBuff, hasBuff } from "../game/BuffHelpers";
 
 /** Apply damage to a tank — shield absorbs first, then HP.
  *  Sets shieldFlash if the shield absorbed any damage.
- *  damagerId is recorded as the last entity that damaged this tank. */
+ *  damagerId is recorded as the last entity that damaged this tank.
+ *  Damage Resist buff halves incoming damage. */
 function applyDamage(tank: TankComponent, amount: number, damagerId: EntityId | null): void {
+  // Damage Resist buff: halve incoming damage
+  if (hasBuff(tank, "damageResist")) {
+    amount *= 0.5;
+  }
   if (tank.shield > 0) {
     const absorbed = Math.min(tank.shield, amount);
     tank.shield -= absorbed;
@@ -92,20 +98,24 @@ export class CombatSystem {
         }
       : { damage: 1, speed: 1, penetration: 1, fireRate: 1 };
 
-    // Fire rate from Reload stat × class multiplier
+    // Fire rate from Reload stat × class multiplier × Rapid Fire buff
+    const rapidFireMult = hasBuff(tank, "rapidFire") ? 2.0 : 1.0;
     const fireRate =
       CONFIG.tank.baseFireRate *
       (1 + tank.stats[6] * CONFIG.tank.statReloadPerPoint) *
-      classMult.fireRate;
+      classMult.fireRate *
+      rapidFireMult;
     tank.fireCooldown = 1 / fireRate;
 
-    // Bullet stats from tank stats × class multipliers
+    // Bullet stats from tank stats × class multipliers × Damage Boost buff
+    const damageBuffMult = hasBuff(tank, "damage") ? 1.5 : 1.0;
     const bulletSpeed =
       (CONFIG.bullet.baseSpeed + tank.stats[3] * CONFIG.tank.statBulletSpeedPerPoint) *
       classMult.speed;
     const bulletDamage =
       (CONFIG.bullet.baseDamage + tank.stats[5] * CONFIG.tank.statBulletDamagePerPoint) *
-      classMult.damage;
+      classMult.damage *
+      damageBuffMult;
     const bulletPenetration =
       (CONFIG.bullet.basePenetration +
         tank.stats[4] * CONFIG.tank.statBulletPenetrationPerPoint) *
@@ -194,6 +204,7 @@ export class CombatSystem {
       // Get the owner's team
       const ownerTeam = world.getComponent<TeamComponent>(bullet.ownerId, C.Team);
       const ownerTeamId = ownerTeam ? ownerTeam.id : -1;
+      const ownerTank = world.getComponent<TankComponent>(bullet.ownerId, C.Tank);
 
       for (const tid of tanks) {
         if (tid === bullet.ownerId) continue; // don't hit self
@@ -215,6 +226,11 @@ export class CombatSystem {
           this.audio.play("hit");
           EffectSystem.spawnHit(world, bpos.x, bpos.y);
           EffectSystem.spawnBlood(world, tpos.x, tpos.y);
+
+          // Vampiric buff: heal the shooter for 50% of damage dealt
+          if (ownerTank && hasBuff(ownerTank, "vampiric")) {
+            ownerTank.hp = Math.min(ownerTank.maxHp, ownerTank.hp + bullet.damage * 0.5);
+          }
 
           if (bullet.penetration < 0) {
             bulletsToDestroy.push(bid);
@@ -341,6 +357,10 @@ export class CombatSystem {
       // Only count kills for the player
       if (world.hasComponent(ownerId, C.Player)) {
         this.storage.addKill();
+      }
+      // Apply buff if the shape carried one
+      if (shape.buffType) {
+        applyBuff(ownerTank, shape.buffType, performance.now());
       }
     }
 

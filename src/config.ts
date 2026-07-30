@@ -5,7 +5,7 @@
  * CONFIG each frame (mirrors undergrowth's pattern).
  */
 
-import type { ShapeKind } from "./types";
+import type { ShapeKind, BuffType } from "./types";
 
 interface ShapeConfig {
   radius: number;
@@ -206,6 +206,24 @@ export const CONFIG = {
       teamCount: 4,
     },
   } satisfies Record<string, { worldHalf: number; botCount: number; teamCount: number }>,
+
+  // ---- Buffs (temporary powerups from destroying buffed shapes) ----
+  buffs: {
+    /** Chance a pentagon spawns with a buff (0–1). */
+    pentagonBuffChance: 0.10,
+    /** Chance the alpha pentagon spawns with a buff (0–1). */
+    alphaBuffChance: 0.50,
+    /** All buff type definitions. */
+    types: [
+      { key: "speed", icon: "/items/ShipUpgrade/SpeedUpgrade.png", color: "#4ae14a", duration: 15, label: "Speed Boost" },
+      { key: "rapidFire", icon: "/items/Consumables/OverdriveInjector.png", color: "#e1c84a", duration: 12, label: "Rapid Fire" },
+      { key: "damage", icon: "/items/ShipUpgrade/TargetingArray.png", color: "#e14a4a", duration: 12, label: "Damage Boost" },
+      { key: "shieldCharge", icon: "/items/Consumables/ShieldBomb.png", color: "#00b2e1", duration: 10, label: "Shield Charge" },
+      { key: "heal", icon: "/items/Consumables/HealthIncrease.png", color: "#4ae1b0", duration: 0, label: "Instant Heal" },
+      { key: "vampiric", icon: "/items/Passive/VampiricSiphon.png", color: "#9b4ae1", duration: 15, label: "Vampiric" },
+      { key: "damageResist", icon: "/items/ShipUpgrade/KevlarPlating.png", color: "#b08a4a", duration: 12, label: "Damage Resist" },
+    ] satisfies BuffType[],
+  },
 };
 
 export type Config = typeof CONFIG;

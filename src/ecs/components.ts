@@ -6,7 +6,7 @@
  */
 
 import type { ECWorld, EntityId } from "./World";
-import type { ShapeKind, StatIndex } from "../types";
+import type { ShapeKind, StatIndex, BuffAbility, Buff } from "../types";
 import { STAT_COUNT } from "../types";
 import { CONFIG } from "../config";
 
@@ -56,6 +56,8 @@ export interface TankComponent {
   shieldFlash: number;
   /** Last entity that damaged this tank (for spectating on death). */
   lastDamagerId: EntityId | null;
+  /** Active buffs: Map<ability, Buff>. Expired entries are pruned each frame. */
+  buffs: Map<string, Buff>;
   /** Contact damage dealt when ramming. */
   bodyDamage: number;
   /** Total XP earned (also the score). */
@@ -85,6 +87,8 @@ export interface ShapeComponent {
   rotSpeed: number;
   /** Contact damage dealt to a tank that rams it. */
   bodyDamage: number;
+  /** Buff type key this shape carries (null = no buff). Set on pentagons. */
+  buffType: BuffAbility | null;
 }
 
 export interface BulletComponent {
@@ -171,6 +175,7 @@ export function createTankEntity(
     shieldRegen: t.baseShieldRegen,
     shieldFlash: 0,
     lastDamagerId: null,
+    buffs: new Map(),
     bodyDamage: t.baseBodyDamage,
     xp: 0,
     level: 1,
@@ -212,6 +217,7 @@ export function createShapeEntity(
     rotation: Math.random() * Math.PI * 2,
     rotSpeed: (Math.random() - 0.5) * s.rotSpeedRange,
     bodyDamage: s.bodyDamage,
+    buffType: null,
   });
   return id;
 }

@@ -16,6 +16,14 @@ import {
   type ShapeComponent,
   type VelocityComponent,
 } from "../ecs/components";
+import { CONFIG } from "../config";
+import type { BuffAbility } from "../types";
+
+/** Pick a random buff type from CONFIG.buffs.types. */
+function randomBuffType(): BuffAbility {
+  const types = CONFIG.buffs.types;
+  return types[Math.floor(Math.random() * types.length)].key;
+}
 
 // ---- Alpha marker component ----
 
@@ -61,8 +69,14 @@ export function createAlphaPentagonEntity(
     rotation: Math.random() * Math.PI * 2,
     rotSpeed: (Math.random() - 0.5) * ALPHA_ROT_SPEED_RANGE,
     bodyDamage: ALPHA_BODY_DAMAGE,
+    buffType: null,
   });
   world.addComponent<AlphaComponent>(id, ALPHA, {});
+  // Alpha pentagon has a high chance to carry a buff
+  if (Math.random() < CONFIG.buffs.alphaBuffChance) {
+    const shape = world.getComponent<ShapeComponent>(id, C.Shape);
+    if (shape) shape.buffType = randomBuffType();
+  }
   return id;
 }
 
@@ -139,7 +153,11 @@ export class PentagonNest {
     // Seed the nest with the target number of regular pentagons.
     for (let i = 0; i < this.targetCount; i++) {
       const p = randomInDisc(this.nestX, this.nestY, this.nestRadius);
-      createShapeEntity(world, "pentagon", p.x, p.y);
+      const id = createShapeEntity(world, "pentagon", p.x, p.y);
+      if (Math.random() < CONFIG.buffs.pentagonBuffChance) {
+        const shape = world.getComponent<ShapeComponent>(id, C.Shape);
+        if (shape) shape.buffType = randomBuffType();
+      }
     }
     world.flush();
   }
@@ -197,7 +215,11 @@ export class PentagonNest {
       const toSpawn = Math.min(NEST_SPAWN_PER_TICK, deficit);
       for (let i = 0; i < toSpawn; i++) {
         const p = randomInDisc(this.nestX, this.nestY, this.nestRadius);
-        createShapeEntity(world, "pentagon", p.x, p.y);
+        const id = createShapeEntity(world, "pentagon", p.x, p.y);
+        if (Math.random() < CONFIG.buffs.pentagonBuffChance) {
+          const shape = world.getComponent<ShapeComponent>(id, C.Shape);
+          if (shape) shape.buffType = randomBuffType();
+        }
       }
     }
 

@@ -26,11 +26,13 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
   private orbSprites: Record<string, HTMLImageElement> = {};
   private fxSprites: Record<string, HTMLImageElement> = {};
+  private buffSprites: Record<string, HTMLImageElement> = {};
 
   constructor(ctx: CanvasRenderingContext2D) {
     this.ctx = ctx;
     this.loadSprites();
     this.loadFxSprites();
+    this.loadBuffSprites();
   }
 
   private loadSprites(): void {
@@ -96,6 +98,19 @@ export class Renderer {
 
   getFxSprite(name: string): HTMLImageElement | null {
     const img = this.fxSprites[name];
+    return img && img.complete && img.naturalWidth > 0 ? img : null;
+  }
+
+  private loadBuffSprites(): void {
+    for (const bt of CONFIG.buffs.types) {
+      const img = new Image();
+      img.src = bt.icon;
+      this.buffSprites[bt.key] = img;
+    }
+  }
+
+  getBuffSprite(key: string): HTMLImageElement | null {
+    const img = this.buffSprites[key];
     return img && img.complete && img.naturalWidth > 0 ? img : null;
   }
 
@@ -321,6 +336,38 @@ export class Renderer {
         ctx.fillRect(bx, by, barW, barH);
         ctx.fillStyle = CONFIG.colors.hpBarFg;
         ctx.fillRect(bx, by, barW * (shape.hp / shape.maxHp), barH);
+      }
+
+      // Buff overlay icon — floats above the shape with a colored glow
+      if (shape.buffType) {
+        const buffDef = CONFIG.buffs.types.find((t) => t.key === shape.buffType);
+        if (buffDef) {
+          const iconSize = isAlpha ? 48 : 28;
+          const bobY = Math.sin(performance.now() / 400 + pos.x * 0.01) * 4;
+          const ix = pos.x - iconSize / 2;
+          const iy = pos.y - r - iconSize - 8 + bobY;
+
+          // Colored glow circle behind icon
+          ctx.save();
+          ctx.globalAlpha = 0.3 + 0.1 * Math.sin(performance.now() / 300);
+          ctx.fillStyle = buffDef.color;
+          ctx.beginPath();
+          ctx.arc(pos.x, pos.y - r - iconSize / 2 - 8 + bobY, iconSize * 0.7, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+
+          // Draw the buff icon sprite
+          const sprite = this.getBuffSprite(shape.buffType);
+          if (sprite) {
+            ctx.drawImage(sprite, ix, iy, iconSize, iconSize);
+          } else {
+            // Fallback: colored circle if sprite not loaded
+            ctx.fillStyle = buffDef.color;
+            ctx.beginPath();
+            ctx.arc(pos.x, pos.y - r - iconSize / 2 - 8 + bobY, iconSize / 2, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
       }
     }
   }

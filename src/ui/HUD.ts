@@ -24,6 +24,7 @@ export class HUD {
   private statRows: HTMLElement[] = [];
   private classPanel: HTMLElement;
   private lastShownUpgrades: string = "";
+  private buffsEl: HTMLElement;
 
   constructor(game: Game) {
     this.game = game;
@@ -36,6 +37,10 @@ export class HUD {
     this.classPanel = document.createElement("div");
     this.classPanel.className = "class-panel hidden";
     this.injectClassPanelStyles();
+    // Buffs display container
+    this.buffsEl = document.createElement("div");
+    this.buffsEl.className = "buffs-hud";
+    this.injectBuffStyles();
   }
 
   init(): void {
@@ -46,6 +51,14 @@ export class HUD {
     this.classPanel.style.left = "16px";
     this.classPanel.style.pointerEvents = "auto";
     this.root.appendChild(this.classPanel);
+    // Buffs display at top-center of screen
+    this.buffsEl.style.position = "absolute";
+    this.buffsEl.style.top = "16px";
+    this.buffsEl.style.left = "50%";
+    this.buffsEl.style.transform = "translateX(-50%)";
+    this.buffsEl.style.pointerEvents = "none";
+    this.buffsEl.style.zIndex = "11";
+    this.root.appendChild(this.buffsEl);
   }
 
   show(): void {
@@ -103,6 +116,44 @@ export class HUD {
         font-weight: 400;
         opacity: 0.85;
         margin-top: 2px;
+      }
+    `;
+    document.head.appendChild(style);
+  }
+
+  private injectBuffStyles(): void {
+    if (document.getElementById("hud-buff-styles")) return;
+    const style = document.createElement("style");
+    style.id = "hud-buff-styles";
+    style.textContent = `
+      .buffs-hud {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
+        max-width: 90vw;
+      }
+      .buff-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        background: rgba(20, 30, 50, 0.82);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        border-radius: 8px;
+        padding: 4px 10px 4px 6px;
+        font-size: 13px;
+        font-weight: 600;
+        color: #fff;
+      }
+      .buff-chip img {
+        width: 20px;
+        height: 20px;
+        border-radius: 4px;
+      }
+      .buff-chip .buff-time {
+        color: #aaa;
+        font-variant-numeric: tabular-nums;
+        font-size: 12px;
       }
     `;
     document.head.appendChild(style);
@@ -190,6 +241,27 @@ export class HUD {
 
     // Class upgrade panel
     this.updateClassPanel(tank);
+
+    // Active buffs
+    this.updateBuffs(tank);
+  }
+
+  private updateBuffs(tank: TankComponent): void {
+    const now = performance.now();
+    let html = "";
+    for (const [, buff] of tank.buffs) {
+      const left = Math.max(0, (buff.until - now) / 1000);
+      html += `<div class="buff-chip" style="border-color:${buff.color}">`;
+      html += `<img src="${buff.icon}" alt="" onerror="this.style.display='none'">`;
+      html += `<span style="color:${buff.color}">${this.escapeHtml(buff.label)}</span>`;
+      html += `<span class="buff-time">${left.toFixed(1)}s</span>`;
+      html += `</div>`;
+    }
+    this.buffsEl.innerHTML = html;
+  }
+
+  private escapeHtml(s: string): string {
+    return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
   }
 
   private updateClassPanel(tank: TankComponent): void {

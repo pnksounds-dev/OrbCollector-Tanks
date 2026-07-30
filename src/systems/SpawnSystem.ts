@@ -9,8 +9,23 @@ import { CONFIG } from "../config";
 import type { ECWorld } from "../ecs/World";
 import { C, createShapeEntity, type ShapeComponent, type PositionComponent } from "../ecs/components";
 import type { Camera } from "../game/Camera";
-import type { ShapeKind } from "../types";
+import type { ShapeKind, BuffAbility } from "../types";
 import { isInNest, NEST_DEFAULT_RADIUS } from "../game/AlphaPentagon";
+
+/** Pick a random buff type from CONFIG.buffs.types. */
+function randomBuffType(): BuffAbility {
+  const types = CONFIG.buffs.types;
+  return types[Math.floor(Math.random() * types.length)].key;
+}
+
+/** Maybe assign a buff to a pentagon shape based on config chance. */
+function maybeAssignBuff(world: ECWorld, id: number, chance: number): void {
+  if (Math.random() >= chance) return;
+  const shape = world.getComponent<ShapeComponent>(id, C.Shape);
+  if (shape) {
+    shape.buffType = randomBuffType();
+  }
+}
 
 export class SpawnSystem {
   /** Accumulator for spawn throttling (don't spawn all at once). */
@@ -23,7 +38,11 @@ export class SpawnSystem {
       const target = CONFIG.shapes[kind].targetCount;
       for (let i = 0; i < target; i++) {
         const [x, y] = this.randomSpawnPos(null, 0, 0);
-        createShapeEntity(world, kind, x, y);
+        const id = createShapeEntity(world, kind, x, y);
+        // Pentagons have a chance to carry a buff
+        if (kind === "pentagon") {
+          maybeAssignBuff(world, id, CONFIG.buffs.pentagonBuffChance);
+        }
       }
     }
   }
@@ -68,7 +87,11 @@ export class SpawnSystem {
         // Squares and triangles avoid the pentagon nest; pentagons can spawn anywhere
         const avoidNest = kind === "square" || kind === "triangle";
         const [x, y] = this.randomSpawnPos(null, px, py, avoidNest);
-        createShapeEntity(world, kind, x, y);
+        const id = createShapeEntity(world, kind, x, y);
+        // Pentagons have a chance to carry a buff
+        if (kind === "pentagon") {
+          maybeAssignBuff(world, id, CONFIG.buffs.pentagonBuffChance);
+        }
       }
     }
   }

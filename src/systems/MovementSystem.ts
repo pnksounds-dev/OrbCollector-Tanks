@@ -23,6 +23,7 @@ import { getClass } from "../game/TankClasses";
 import type { Input } from "../game/Input";
 import { angleTo, clamp } from "../lib/math";
 import { EffectSystem } from "./EffectSystem";
+import { hasBuff, updateBuffs } from "../game/BuffHelpers";
 
 const AUTO_SPIN_RATE = Math.PI * 2 / 6;
 
@@ -55,12 +56,13 @@ export class MovementSystem {
       pos.angle = angleTo(pos.x, pos.y, input.world.x, input.world.y);
     }
 
-    // Movement: WASD normalized × speed (modified by Movement Speed stat + class mult)
+    // Movement: WASD normalized × speed (modified by Movement Speed stat + class mult + Speed buff)
     const [dx, dy] = input.moveVector();
     const cls = getClass(tank.classId);
     const moveMult = cls ? cls.moveSpeedMult : 1;
+    const speedBuffMult = hasBuff(tank, "speed") ? 1.6 : 1.0;
     const speed =
-      (CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint) * moveMult;
+      (CONFIG.tank.baseSpeed + tank.stats[7] * CONFIG.tank.statMoveSpeedPerPoint) * moveMult * speedBuffMult;
     vel.vx = dx * speed;
     vel.vy = dy * speed;
 
@@ -84,12 +86,16 @@ export class MovementSystem {
       tank.hp = Math.min(tank.maxHp, tank.hp + regen);
     }
 
-    // Shield regen (only when not recently hit)
+    // Shield regen (only when not recently hit; Shield Charge buff doubles regen)
     if (tank.shieldFlash > 0) {
       tank.shieldFlash = Math.max(0, tank.shieldFlash - dt);
     } else if (tank.shield < tank.maxShield) {
-      tank.shield = Math.min(tank.maxShield, tank.shield + tank.shieldRegen * dt);
+      const regenMult = hasBuff(tank, "shieldCharge") ? 2.0 : 1.0;
+      tank.shield = Math.min(tank.maxShield, tank.shield + tank.shieldRegen * regenMult * dt);
     }
+
+    // Prune expired buffs
+    updateBuffs(tank, performance.now());
 
     // Invuln countdown
     if (tank.invuln > 0) {
