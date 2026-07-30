@@ -24,11 +24,13 @@ function effectCount(world: ECWorld): number {
   return world.query(C.Position, C.Effect).length;
 }
 
-/** Current smoke frame counter — cycles 1-9 sequentially for animated smoke. */
+/** Current smoke frame counter — cycles sequentially for animated smoke. */
 let smokeFrame = 1;
 
 export class EffectSystem {
   private smokeTimers = new Map<number, number>();
+  /** Tracks previous HP per tank to detect healing. */
+  private prevHp = new Map<number, number>();
 
   update(world: ECWorld, dt: number): void {
     this.updateEffects(world, dt);
@@ -59,18 +61,47 @@ export class EffectSystem {
     for (const id of tankIds) {
       const tank = world.getComponent<TankComponent>(id, C.Tank);
       if (!tank) continue;
-      if (tank.hp >= tank.maxHp * 0.4) {
+
+      const hpPct = tank.hp / tank.maxHp;
+      const prevHp = this.prevHp.get(id) ?? tank.hp;
+      const isHealing = tank.hp > prevHp + 0.01; // HP increased since last frame
+      this.prevHp.set(id, tank.hp);
+
+      // No smoke if fully healthy and not healing
+      if (hpPct >= 1.0 && !isHealing) {
         this.smokeTimers.delete(id);
         continue;
       }
+
+      // Determine smoke type:
+      // - Below 40% HP: dense damage smoke (frames 1-3)
+      // - Above 40% HP and healing: light healing smoke (frames 4-9)
+      // - Above 40% HP and not healing: no smoke
+      let smokeType: "damage" | "heal" | null = null;
+      if (hpPct < 0.4) {
+        smokeType = "damage";
+      } else if (isHealing && hpPct < 1.0) {
+        smokeType = "heal";
+      }
+
+      if (!smokeType) {
+        this.smokeTimers.delete(id);
+        continue;
+      }
+
       let timer = this.smokeTimers.get(id) ?? 0;
       timer -= dt;
       if (timer <= 0) {
         const pos = world.getComponent<PositionComponent>(id, C.Position);
         if (pos) {
-          EffectSystem.spawnSmoke(world, pos.x, pos.y);
+          if (smokeType === "damage") {
+            EffectSystem.spawnDamageSmoke(world, pos.x, pos.y);
+          } else {
+            EffectSystem.spawnHealSmoke(world, pos.x, pos.y, hpPct);
+          }
         }
-        timer = 0.3;
+        // Healing smoke is more frequent to show active recovery
+        timer = smokeType === "heal" ? 0.2 : 0.3;
       }
       this.smokeTimers.set(id, timer);
     }
@@ -78,6 +109,9 @@ export class EffectSystem {
     const alive = new Set(tankIds);
     for (const key of this.smokeTimers.keys()) {
       if (!alive.has(key)) this.smokeTimers.delete(key);
+    }
+    for (const key of this.prevHp.keys()) {
+      if (!alive.has(key)) this.prevHp.delete(key);
     }
   }
 
@@ -181,12 +215,12 @@ export class EffectSystem {
     );
   }
 
-  static spawnSmoke(world: ECWorld, x: number, y: number): void {
+  /** Dense damage smoke — cycles through frames 1-3 (dark, dense smoke). */
+  static spawnDamageSmoke(world: ECWorld, x: number, y: number): void {
     if (effectCount(world) >= MAX_EFFECTS) return;
-    // Cycle through smoke frames 1-9 sequentially for proper animation order
     const smokeName = "smoke" + smokeFrame;
     smokeFrame++;
-    if (smokeFrame > 9) smokeFrame = 1;
+    if (smokeFrame > 3) smokeFrame = 1;
     createEffectEntity(
       world,
       x,
@@ -198,6 +232,36 @@ export class EffectSystem {
       randRange(0.5, 1.0),
       0,
       randRange(-1, 1),
+      true,
+      true,
+    );
+  }
+
+  /** Light healing smoke — cycles through frames 4-9 (lighter, whiter smoke).
+   *  As HP recovers, frames shift toward 9 (very light, almost dissipated). */
+  static spawnHealSmoke(world: ECWorld, x: number, y: number, hpPct: number): void {
+    if (effectCount(world) >= MAX_EFFECTS) return;
+    // Map HP 0.4→frame 4 (denser), HP 1.0→frame 9 (lightest)
+    const minFrame = 4;
+    const maxFrame = 9;
+    const range = maxFrame - minFrame;
+    // Sequential cycle within healing range, biased by HP level
+    const offset = Math.floor(range * hpPct);
+    const frame = minFrame + ((smokeFrame - minFrame + offset) % (range + 1));
+    smokeFrame++;
+    if (smokeFrame > maxFrame) smokeFrame = minFrame;
+    const smokeName = "smoke" + frame;
+    createEffectEntity(
+      world,
+      x,
+      y,
+      smokeName,
+      randRange(-8, 8),
+      randRange(-30, -60), // slower rise for healing smoke
+      0.8,
+      randRange(0.4, 0.8), // slightly smaller
+      0,
+      randRange(-0.5, 0.5),
       true,
       true,
     );
