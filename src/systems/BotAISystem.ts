@@ -80,6 +80,13 @@ export interface BotAIComponent {
   aimJitterPhase: number;
   /** Aim tracking speed (varies per bot for personality). */
   aimSpeed: number;
+  // ---- Individual territory ----
+  /** Home territory center X — bot farms near here, returns here when idle. */
+  homeX: number;
+  /** Home territory center Y. */
+  homeY: number;
+  /** How often this bot re-targets (varies per bot for desync). */
+  retargetInterval: number;
 }
 
 // ---- Name / color pools ----
@@ -186,7 +193,6 @@ const FLEE_HP_RATIO = 0.3;
 const FLEE_RECOVER_RATIO = 0.7;
 const FIRE_RANGE = 650;
 const LOD_DISTANCE = 1800;
-const RETARGET_INTERVAL = 0.6;
 
 // ---- Smooth steering parameters ----
 
@@ -207,9 +213,9 @@ const AVOID_LOOK_AHEAD = 1.2;
 /** Predictive avoidance: steering force magnitude. */
 const AVOID_FORCE = 3.0;
 /** Bot separation: range beyond body radii. */
-const SEPARATION_RANGE = 50;
+const SEPARATION_RANGE = 90;
 /** Bot separation: steering force magnitude. */
-const SEPARATION_FORCE = 2.0;
+const SEPARATION_FORCE = 4.0;
 /** Enemy base avoidance range beyond base radius. */
 const ENEMY_BASE_AVOID_RANGE = 500;
 /** Own base heal range. */
@@ -284,7 +290,7 @@ export function createBotEntity(
     targetX: x, targetY: y,
     steerAngle: Math.random() * Math.PI * 2,
     fireFlag: false,
-    retargetTimer: 0,
+    retargetTimer: Math.random() * 0.6, // desync retargeting
     name, color,
     preferredRange: profile.range,
     formationOffset: Math.random(),
@@ -292,7 +298,10 @@ export function createBotEntity(
     desiredVx: 0,
     desiredVy: 0,
     aimJitterPhase: Math.random() * Math.PI * 2,
-    aimSpeed: 6 + Math.random() * 6, // 6–12 rad/s tracking speed
+    aimSpeed: 6 + Math.random() * 6,
+    homeX: x,
+    homeY: y,
+    retargetInterval: 0.4 + Math.random() * 0.6, // 0.4–1.0s per bot
   });
   return id;
 }
@@ -360,10 +369,10 @@ export class BotAISystem {
         continue;
       }
 
-      // Retarget timer
+      // Retarget timer (per-bot interval for desync)
       ai.retargetTimer -= dt;
       if (ai.retargetTimer <= 0) {
-        ai.retargetTimer = RETARGET_INTERVAL;
+        ai.retargetTimer = ai.retargetInterval;
         this.retarget(world, botId, pos, tank, ai, px, py, distToPlayer, playerAlive);
       } else {
         this.updateBehaviorState(world, botId, tank, ai, pos, distToPlayer, playerAlive);
@@ -399,12 +408,22 @@ export class BotAISystem {
   ): void {
     this.updateBehaviorState(world, botId, tank, ai, pos, distToPlayer, playerAlive);
 
+    // Slowly drift home territory so bots explore new areas over time (prevents static clusters)
+    ai.homeX += (Math.random() - 0.5) * 60;
+    ai.homeY += (Math.random() - 0.5) * 60;
+    // Clamp home to arena bounds
+    const homeBound = CONFIG.worldHalf - 200;
+    ai.homeX = clamp(ai.homeX, -homeBound, homeBound);
+    ai.homeY = clamp(ai.homeY, -homeBound, homeBound);
+
     const myTeam = world.getComponent<TeamComponent>(botId, C.Team);
     const myTeamId = myTeam ? myTeam.id : -1;
-    const enemy = this.findNearestEnemy(world, botId, pos.x, pos.y);
+    const enemy = this.findBestEnemy(world, botId, pos.x, pos.y);
     const enemyDist = enemy ? enemy.dist : Infinity;
     const profile = ROLE_PROFILES[ai.role];
     const fireRange = FIRE_RANGE * profile.fireRangeMult;
+    // Personal abort range — each bot gives up the chase at a different distance
+    const personalAbortRange = HUNT_ABORT_RANGE * (0.7 + ai.formationOffset * 0.4);
 
     // ---- FLEEING: retreat to own base ----
     if (ai.behavior === "fleeing") {
@@ -439,7 +458,7 @@ export class BotAISystem {
       const distToBase = dist(pos.x, pos.y, base.x, base.y);
 
       // If enemy is near base, engage
-      if (enemy && enemyDist < HUNT_RANGE) {
+      if (enemy && enemyDist < personalAbortRange) {
         ai.targetId = null;
         ai.targetX = enemy.x;
         ai.targetY = enemy.y;
@@ -466,7 +485,7 @@ export class BotAISystem {
 
     // ---- HUNTING: engage enemy tanks ----
     if (ai.behavior === "hunting") {
-      if (enemy && enemyDist < HUNT_ABORT_RANGE) {
+      if (enemy && enemyDist < personalAbortRange) {
         ai.targetId = null;
         // Role-specific positioning
         if (ai.role === "sniper") {
@@ -527,35 +546,34 @@ export class BotAISystem {
       ai.behavior = "farming";
     }
 
-    // ---- FARMING: seek shapes for XP ----
-    // Defenders in team mode farm near their base
-    let searchX = pos.x;
-    let searchY = pos.y;
+    // ---- FARMING: seek shapes for XP near individual territory ----
+    // Each bot farms near its own home territory, not all converging to center.
+    // Defenders farm near their base; others farm near their assigned home zone.
+    let territoryX = ai.homeX;
+    let territoryY = ai.homeY;
     if (profile.defensive && myTeamId >= 0 && teamBases[myTeamId]) {
       const base = teamBases[myTeamId];
-      searchX = base.x;
-      searchY = base.y;
+      territoryX = base.x;
+      territoryY = base.y;
     }
 
-    const target = this.findNearestShape(world, searchX, searchY);
+    // Find a shape near the bot's territory that isn't being targeted by nearby allies
+    const target = this.findBestShape(world, botId, pos.x, pos.y, territoryX, territoryY);
     if (target !== null) {
       ai.targetId = target;
       const shapePos = world.getComponent<PositionComponent>(target, C.Position);
       if (shapePos) {
-        // Approach to preferred range
         const d = dist(pos.x, pos.y, shapePos.x, shapePos.y);
         if (d > ai.preferredRange * 1.2) {
           ai.targetX = shapePos.x;
           ai.targetY = shapePos.y;
           ai.steerAngle = angleTo(pos.x, pos.y, shapePos.x, shapePos.y);
         } else if (d < ai.preferredRange * 0.6) {
-          // Too close, back off slightly
           const away = angleTo(shapePos.x, shapePos.y, pos.x, pos.y);
           ai.steerAngle = away;
           ai.targetX = pos.x + Math.cos(away) * 100;
           ai.targetY = pos.y + Math.sin(away) * 100;
         } else {
-          // Strafe around the shape
           const strafe = angleTo(pos.x, pos.y, shapePos.x, shapePos.y) + Math.PI / 2;
           ai.steerAngle = strafe;
           ai.targetX = pos.x + Math.cos(strafe) * 150;
@@ -566,23 +584,21 @@ export class BotAISystem {
         ai.fireFlag = false;
       }
     } else {
-      // No shapes nearby — wander toward arena center or team base
+      // No shapes nearby — drift toward home territory (not arena center)
       ai.targetId = null;
-      if (profile.defensive && myTeamId >= 0 && teamBases[myTeamId]) {
-        const base = teamBases[myTeamId];
-        ai.targetX = base.x;
-        ai.targetY = base.y;
-      } else {
-        ai.targetX = 0;
-        ai.targetY = 0;
-      }
-      ai.steerAngle = angleTo(pos.x, pos.y, ai.targetX, ai.targetY);
+      ai.targetX = territoryX;
+      ai.targetY = territoryY;
+      ai.steerAngle = angleTo(pos.x, pos.y, territoryX, territoryY);
       ai.fireFlag = false;
     }
   }
 
-  /** Find the nearest enemy tank. */
-  private findNearestEnemy(
+  /**
+   * Find the best enemy to engage — considers distance, enemy HP (weaker = easier prey),
+   * and whether other allies are already targeting the same enemy.
+   * This distributes attacks across multiple enemies instead of all bots focusing one.
+   */
+  private findBestEnemy(
     world: ECWorld,
     botId: EntityId,
     x: number,
@@ -590,8 +606,41 @@ export class BotAISystem {
   ): { id: EntityId; x: number; y: number; dist: number } | null {
     const myTeam = world.getComponent<TeamComponent>(botId, C.Team);
     const myTeamId = myTeam ? myTeam.id : -1;
+
+    // Count how many allies are targeting each enemy
+    const enemyTargetCounts = new Map<EntityId, number>();
+    for (const otherId of this.botIds) {
+      if (otherId === botId) continue;
+      const otherAi = world.getComponent<BotAIComponent>(otherId, BOT_AI);
+      if (otherAi && otherAi.behavior === "hunting") {
+        // Check if this ally is on our team
+        const otherTeam = world.getComponent<TeamComponent>(otherId, C.Team);
+        const otherTeamId = otherTeam ? otherTeam.id : -1;
+        if (myTeamId >= 0 && otherTeamId >= 0 && myTeamId === otherTeamId) {
+          // Same team — track their target
+          const otherPos = world.getComponent<PositionComponent>(otherId, C.Position);
+          if (otherPos) {
+            const d = dist(x, y, otherPos.x, otherPos.y);
+            if (d < 800) {
+              // Find what enemy they're closest to
+              for (const tid of this.tankIds) {
+                if (tid === otherId) continue;
+                const tpos = world.getComponent<PositionComponent>(tid, C.Position);
+                if (tpos) {
+                  const ed = dist(otherPos.x, otherPos.y, tpos.x, tpos.y);
+                  if (ed < 500) {
+                    enemyTargetCounts.set(tid, (enemyTargetCounts.get(tid) ?? 0) + 1);
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+
     let best: { id: EntityId; x: number; y: number; dist: number } | null = null;
-    let bestDistSq = Infinity;
+    let bestScore = -Infinity;
 
     for (const tid of this.tankIds) {
       if (tid === botId) continue;
@@ -603,12 +652,23 @@ export class BotAISystem {
       const theirTank = world.getComponent<TankComponent>(tid, C.Tank);
       if (theirTank && theirTank.hp <= 0) continue;
 
-      const dx = tpos.x - x;
-      const dy = tpos.y - y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestDistSq) {
-        bestDistSq = d2;
-        best = { id: tid, x: tpos.x, y: tpos.y, dist: Math.sqrt(d2) };
+      const d = dist(x, y, tpos.x, tpos.y);
+      // Score: closer is better, weaker enemies are easier prey
+      let score = -d;
+      if (theirTank) {
+        const hpRatio = theirTank.maxHp > 0 ? theirTank.hp / theirTank.maxHp : 1;
+        score += (1 - hpRatio) * 200; // prefer wounded enemies
+        score -= theirTank.level * 5; // avoid high-level enemies
+      }
+      // Penalize enemies that many allies are already targeting
+      const allyCount = enemyTargetCounts.get(tid) ?? 0;
+      score -= allyCount * 300;
+      // Add randomness for variety
+      score += (Math.random() - 0.5) * 80;
+
+      if (score > bestScore) {
+        bestScore = score;
+        best = { id: tid, x: tpos.x, y: tpos.y, dist: d };
       }
     }
     return best;
@@ -647,13 +707,15 @@ export class BotAISystem {
       return;
     }
 
-    const enemy = this.findNearestEnemy(world, botId, pos.x, pos.y);
+    const enemy = this.findBestEnemy(world, botId, pos.x, pos.y);
     const enemyDist = enemy ? enemy.dist : Infinity;
-    const hasNearbyEnemy = (playerAlive && distToPlayer < HUNT_RANGE) || enemyDist < HUNT_RANGE;
+    // Individual aggression threshold — each bot has a different "comfort zone"
+    const personalHuntRange = HUNT_RANGE * (0.6 + ai.formationOffset * 0.6);
+    const hasNearbyEnemy = (playerAlive && distToPlayer < personalHuntRange) || enemyDist < personalHuntRange;
 
     // DEFENDERS stay in defending mode unless under direct threat
     if (profile.defensive && myTeamId >= 0) {
-      if (hasNearbyEnemy && enemyDist < HUNT_RANGE && tank.level >= HUNT_MIN_LEVEL) {
+      if (hasNearbyEnemy && enemyDist < personalHuntRange && tank.level >= HUNT_MIN_LEVEL) {
         ai.behavior = "hunting";
       } else {
         ai.behavior = "defending";
@@ -661,7 +723,7 @@ export class BotAISystem {
       return;
     }
 
-    // HUNTING: engage enemies if close and strong enough
+    // HUNTING: disengage if enemy too far or bot too weak
     if (ai.behavior === "hunting") {
       if (!hasNearbyEnemy || tank.level < HUNT_MIN_LEVEL) {
         ai.behavior = "farming";
@@ -669,27 +731,69 @@ export class BotAISystem {
       return;
     }
 
-    // FARMING: consider switching to hunting
+    // FARMING: consider switching to hunting — only if enemy is within personal range
     if (hasNearbyEnemy && tank.level >= HUNT_MIN_LEVEL && hpRatio > FLEE_HP_RATIO) {
-      // Hunters and rammers are more eager to fight
-      if (profile.aggressive || enemyDist < HUNT_RANGE * 0.5) {
+      // Aggressive roles (hunter, rammer) switch eagerly; others need closer enemy
+      const switchThreshold = profile.aggressive ? personalHuntRange : personalHuntRange * 0.5;
+      if (enemyDist < switchThreshold) {
         ai.behavior = "hunting";
       }
     }
   }
 
-  /** Find the nearest shape to (x, y). */
-  private findNearestShape(world: ECWorld, x: number, y: number): EntityId | null {
+  /**
+   * Find the best shape to farm — considers distance to bot, distance to territory,
+   * and whether other nearby allies are already targeting the same shape.
+   * This distributes bots across different shapes instead of all converging on one.
+   */
+  private findBestShape(
+    world: ECWorld,
+    botId: EntityId,
+    botX: number,
+    botY: number,
+    terrX: number,
+    terrY: number,
+  ): EntityId | null {
+    // Collect what other bots are targeting
+    const claimedShapes = new Set<EntityId>();
+    for (const otherId of this.botIds) {
+      if (otherId === botId) continue;
+      const otherAi = world.getComponent<BotAIComponent>(otherId, BOT_AI);
+      if (otherAi && otherAi.targetId !== null && otherAi.behavior === "farming") {
+        // Only count allies near us — far-away claims don't matter
+        const otherPos = world.getComponent<PositionComponent>(otherId, C.Position);
+        if (otherPos) {
+          const d = dist(botX, botY, otherPos.x, otherPos.y);
+          if (d < 600) {
+            claimedShapes.add(otherAi.targetId);
+          }
+        }
+      }
+    }
+
     let best: EntityId | null = null;
-    let bestDistSq = Infinity;
+    let bestScore = -Infinity;
+
     for (const sid of this.shapeIds) {
       const s = world.getComponent<PositionComponent>(sid, C.Position);
       if (!s) continue;
-      const dx = s.x - x;
-      const dy = s.y - y;
-      const d2 = dx * dx + dy * dy;
-      if (d2 < bestDistSq) {
-        bestDistSq = d2;
+
+      // Distance from bot to shape
+      const distToShape = dist(botX, botY, s.x, s.y);
+      // Distance from shape to territory center
+      const distToTerr = dist(terrX, terrY, s.x, s.y);
+
+      // Score: closer to bot is better, closer to territory is better,
+      // and shapes claimed by nearby allies are penalized
+      let score = -distToShape - distToTerr * 0.3;
+      if (claimedShapes.has(sid)) {
+        score -= 400; // big penalty for shapes allies are already farming
+      }
+      // Add small random factor for variety
+      score += (Math.random() - 0.5) * 50;
+
+      if (score > bestScore) {
+        bestScore = score;
         best = sid;
       }
     }
@@ -1100,7 +1204,26 @@ export function maintainBots(
     const color = teamCount > 0
       ? CONFIG.teams.colors[botTeam]
       : BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)];
-    createBotEntity(world, bx, by, name, color, botTeam);
+    const botId = createBotEntity(world, bx, by, name, color, botTeam);
+    // Assign an individual home territory spread across the team's half of the arena
+    const ai = world.getComponent<BotAIComponent>(botId, BOT_AI);
+    if (ai) {
+      if (teamCount > 0) {
+        // Spread home territories around the team's base area
+        const base = teamCount === 2
+          ? (botTeam === 0 ? { x: -CONFIG.worldHalf * 0.75, y: 0 } : { x: CONFIG.worldHalf * 0.75, y: 0 })
+          : [{ x: -CONFIG.worldHalf * 0.75, y: -CONFIG.worldHalf * 0.75 }, { x: CONFIG.worldHalf * 0.75, y: -CONFIG.worldHalf * 0.75 }, { x: -CONFIG.worldHalf * 0.75, y: CONFIG.worldHalf * 0.75 }, { x: CONFIG.worldHalf * 0.75, y: CONFIG.worldHalf * 0.75 }][botTeam % 4];
+        // Spread in a wide area around the base — each bot gets a unique zone
+        const angle = Math.random() * Math.PI * 2;
+        const radius = 300 + Math.random() * 1200;
+        ai.homeX = Math.max(-half, Math.min(half, base.x + Math.cos(angle) * radius));
+        ai.homeY = Math.max(-half, Math.min(half, base.y + Math.sin(angle) * radius));
+      } else {
+        // FFA: spread across the whole arena
+        ai.homeX = (Math.random() - 0.5) * CONFIG.worldHalf * 1.5;
+        ai.homeY = (Math.random() - 0.5) * CONFIG.worldHalf * 1.5;
+      }
+    }
   }
 
   if (toDestroy.length > 0 || toSpawn > 0) {
