@@ -104,19 +104,51 @@ export class Renderer {
   private drawArenaBoundary(): void {
     const ctx = this.ctx;
     const half = CONFIG.worldHalf;
-    const t = CONFIG.redZoneThickness;
+    // The camera transform (translate + scale) is already applied, so drawing
+    // happens in world coordinates. Read the current x-scale from the active
+    // transform so stroke widths can be expressed in screen pixels regardless
+    // of zoom level.
+    const scale = ctx.getTransform().a;
 
-    // Red zone outside the playable square
-    ctx.fillStyle = CONFIG.colors.redZone;
-    ctx.fillRect(-half - t, -half - t, (half + t) * 2, t); // top
-    ctx.fillRect(-half - t, half, (half + t) * 2, t); // bottom
-    ctx.fillRect(-half - t, -half, t, half * 2); // left
-    ctx.fillRect(half, -half, t, half * 2); // right
+    // 1. Out-of-bounds zone — a semi-transparent dark red/brown tint over
+    //    everything outside the playable square that is visible. A single path
+    //    holds a huge outer rectangle with the arena square as an inner hole;
+    //    the even-odd fill rule paints only the area between them, so the
+    //    playable area stays untouched. The outer rect is far larger than any
+    //    possible viewport, and the canvas clips rasterization to the screen,
+    //    so this stays cheap (one fill call).
+    const big = half * 40;
+    ctx.fillStyle = "rgba(80, 30, 30, 0.3)";
+    ctx.beginPath();
+    ctx.rect(-big, -big, big * 2, big * 2);
+    ctx.rect(-half, -half, half * 2, half * 2);
+    ctx.fill("evenodd");
 
-    // Arena border line
-    ctx.strokeStyle = "rgba(200, 0, 0, 0.5)";
-    ctx.lineWidth = 2;
+    // 2. Arena border line — a clear 3px white stroke around the playable square.
+    ctx.strokeStyle = "rgba(255, 255, 255, 0.85)";
+    ctx.lineWidth = 3 / scale;
     ctx.strokeRect(-half, -half, half * 2, half * 2);
+
+    // 3. Corner markers — small L-shaped marks at each corner for clarity.
+    const arm = 60; // arm length in world units
+    ctx.beginPath();
+    // top-left
+    ctx.moveTo(-half, -half + arm);
+    ctx.lineTo(-half, -half);
+    ctx.lineTo(-half + arm, -half);
+    // top-right
+    ctx.moveTo(half - arm, -half);
+    ctx.lineTo(half, -half);
+    ctx.lineTo(half, -half + arm);
+    // bottom-right
+    ctx.moveTo(half, half - arm);
+    ctx.lineTo(half, half);
+    ctx.lineTo(half - arm, half);
+    // bottom-left
+    ctx.moveTo(-half + arm, half);
+    ctx.lineTo(-half, half);
+    ctx.lineTo(-half, half - arm);
+    ctx.stroke();
   }
 
   private drawShapes(world: ECWorld, _camera: Camera): void {

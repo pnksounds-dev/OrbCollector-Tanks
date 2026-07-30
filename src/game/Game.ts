@@ -101,7 +101,7 @@ export class Game {
     this.pentagonNest = new PentagonNest();
 
     this.movement = new MovementSystem();
-    this.combat = new CombatSystem(this.audio);
+    this.combat = new CombatSystem(this.audio, this.storage);
     this.spawns = new SpawnSystem();
     this.level = new LevelSystem(this.audio);
     this.botAI = new BotAISystem();
@@ -171,6 +171,12 @@ export class Game {
         BOT_NAMES[i % BOT_NAMES.length],
         BOT_COLORS[i % BOT_COLORS.length],
       );
+    }
+    // Track game count
+    this.storage.incrementGames();
+    // Set player name from start menu
+    if (this.playerName && this.playerName !== "Player") {
+      // Could be used for display in future
     }
     this.state = "playing";
     this.hud.show();
@@ -256,6 +262,9 @@ export class Game {
     const tank = this.world.getComponent<TankComponent>(this.playerId, C.Tank);
     const score = tank ? Math.floor(tank.xp) : 0;
     const level = tank ? tank.level : 1;
+    // Persist stats
+    this.storage.setHighScore(score);
+    this.storage.addCoins(Math.floor(score / 10));
     this.state = "dead";
     this.hud.hide();
     this.leaderboard.hide();

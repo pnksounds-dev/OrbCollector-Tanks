@@ -24,14 +24,17 @@ import {
 import { BOT } from "./BotAISystem";
 import { getBarrels, getClass } from "../game/TankClasses";
 import type { AudioManager } from "../audio/AudioManager";
+import type { Storage } from "../game/Storage";
 import { Input } from "../game/Input";
 import { circlesOverlap } from "../lib/math";
 
 export class CombatSystem {
   private audio: AudioManager;
+  private storage: Storage;
 
-  constructor(audio: AudioManager) {
+  constructor(audio: AudioManager, storage: Storage) {
     this.audio = audio;
+    this.storage = storage;
   }
 
   update(world: ECWorld, dt: number, playerId: EntityId): void {
@@ -291,6 +294,10 @@ export class CombatSystem {
     const ownerTank = world.getComponent<TankComponent>(ownerId, C.Tank);
     if (ownerTank) {
       ownerTank.xp += shape.xp;
+      // Only count kills for the player
+      if (world.hasComponent(ownerId, C.Player)) {
+        this.storage.addKill();
+      }
     }
 
     const pos = world.getComponent<PositionComponent>(shapeId, C.Position);
