@@ -20,6 +20,7 @@ import {
   type TankComponent,
   type ShapeComponent,
   type BulletComponent,
+  type TeamComponent,
 } from "../ecs/components";
 import { BOT } from "./BotAISystem";
 import { getBarrels, getClass } from "../game/TankClasses";
@@ -153,7 +154,7 @@ export class CombatSystem {
     for (const id of shapesToDestroy) world.destroyEntity(id);
   }
 
-  /** Bullets damage any tank that isn't the owner. */
+  /** Bullets damage any enemy tank that isn't the owner. Same-team = no friendly fire. */
   private bulletVsTank(world: ECWorld): void {
     const bullets = world.query(C.Position, C.Bullet);
     const tanks = world.query(C.Position, C.Tank);
@@ -165,6 +166,10 @@ export class CombatSystem {
       const bpos = world.getComponent<PositionComponent>(bid, C.Position)!;
       const bullet = world.getComponent<BulletComponent>(bid, C.Bullet)!;
 
+      // Get the owner's team
+      const ownerTeam = world.getComponent<TeamComponent>(bullet.ownerId, C.Team);
+      const ownerTeamId = ownerTeam ? ownerTeam.id : -1;
+
       for (const tid of tanks) {
         if (tid === bullet.ownerId) continue; // don't hit self
         if (tanksToDestroy.includes(tid)) continue;
@@ -173,6 +178,11 @@ export class CombatSystem {
 
         // Skip invulnerable tanks
         if (tank.invuln > 0) continue;
+
+        // Friendly fire prevention: skip same-team tanks (only if both have valid teams)
+        const theirTeam = world.getComponent<TeamComponent>(tid, C.Team);
+        const theirTeamId = theirTeam ? theirTeam.id : -1;
+        if (ownerTeamId >= 0 && theirTeamId >= 0 && ownerTeamId === theirTeamId) continue;
 
         if (circlesOverlap(bpos.x, bpos.y, bullet.radius, tpos.x, tpos.y, tank.bodyRadius)) {
           tank.hp -= bullet.damage;
@@ -237,7 +247,7 @@ export class CombatSystem {
     for (const id of shapesToDestroy) world.destroyEntity(id);
   }
 
-  /** Tank-vs-tank body ramming: all overlapping tanks damage each other. */
+  /** Tank-vs-tank body ramming: enemy overlapping tanks damage each other. Same-team = no damage. */
   private bodyVsBody(world: ECWorld, dt: number): void {
     const tanks = world.query(C.Position, C.Tank);
     const tanksToDestroy: EntityId[] = [];
@@ -247,12 +257,19 @@ export class CombatSystem {
       const apos = world.getComponent<PositionComponent>(a, C.Position)!;
       const atank = world.getComponent<TankComponent>(a, C.Tank)!;
       if (atank.invuln > 0) continue;
+      const teamA = world.getComponent<TeamComponent>(a, C.Team);
+      const teamIdA = teamA ? teamA.id : -1;
 
       for (let j = i + 1; j < tanks.length; j++) {
         const b = tanks[j];
         const bpos = world.getComponent<PositionComponent>(b, C.Position)!;
         const btank = world.getComponent<TankComponent>(b, C.Tank)!;
         if (btank.invuln > 0) continue;
+
+        // Friendly fire prevention: skip same-team body damage
+        const teamB = world.getComponent<TeamComponent>(b, C.Team);
+        const teamIdB = teamB ? teamB.id : -1;
+        if (teamIdA >= 0 && teamIdB >= 0 && teamIdA === teamIdB) continue;
 
         if (circlesOverlap(apos.x, apos.y, atank.bodyRadius, bpos.x, bpos.y, btank.bodyRadius)) {
           // Both deal body damage to each other

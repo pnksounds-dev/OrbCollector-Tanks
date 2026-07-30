@@ -16,6 +16,7 @@ import {
   C,
   type PositionComponent,
   type ShapeComponent,
+  type TeamComponent,
 } from "../ecs/components";
 import { BOT, BOT_AI, type BotAIComponent } from "../systems/BotAISystem";
 import { ALPHA } from "../game/AlphaPentagon";
@@ -88,14 +89,16 @@ export class Minimap {
       ctx.fill();
     }
 
-    // --- Bot tanks (small colored dots) ---
+    // --- Bot tanks (small colored dots — team color takes priority) ---
     const botIds = world.query(BOT, BOT_AI, C.Position);
     for (const id of botIds) {
       const pos = world.getComponent<PositionComponent>(id, C.Position);
       const ai = world.getComponent<BotAIComponent>(id, BOT_AI);
       if (!pos || !ai) continue;
       const [mx, my] = toMap(pos.x, pos.y);
-      ctx.fillStyle = ai.color;
+      const team = world.getComponent<TeamComponent>(id, C.Team);
+      const teamId = team ? team.id : -1;
+      ctx.fillStyle = teamId >= 0 ? (CONFIG.teams.colors[teamId] ?? ai.color) : ai.color;
       ctx.beginPath();
       ctx.arc(mx, my, 2, 0, Math.PI * 2);
       ctx.fill();

@@ -172,6 +172,35 @@ export const CONFIG = {
     hpBarBg: "rgba(0,0,0,0.4)",
     hpBarFg: "#8fce1e",
   },
+
+  // ---- Teams ----
+  teams: {
+    /** Team colors (body fill). Index 0 = blue, 1 = red, 2 = green, 3 = purple. */
+    colors: ["#00b2e1", "#e14a4a", "#4ae14a", "#9b4ae1"],
+    /** Team base positions for 2-team mode (left/right). */
+    baseRadius2: 500,
+    /** Team base positions for 4-team mode (corners). */
+    baseRadius4: 400,
+  },
+
+  // ---- Game modes ----
+  gameModes: {
+    ffa: {
+      worldHalf: 2500,
+      botCount: 8,
+      teamCount: 0,
+    },
+    "2teams": {
+      worldHalf: 6000,
+      botCount: 100,
+      teamCount: 2,
+    },
+    "4teams": {
+      worldHalf: 6000,
+      botCount: 100,
+      teamCount: 4,
+    },
+  } satisfies Record<string, { worldHalf: number; botCount: number; teamCount: number }>,
 };
 
 export type Config = typeof CONFIG;

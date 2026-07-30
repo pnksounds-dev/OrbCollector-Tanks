@@ -6,8 +6,9 @@
  */
 
 import type { ECWorld, EntityId } from "../ecs/World";
-import type { TankComponent } from "../ecs/components";
+import type { TankComponent, TeamComponent } from "../ecs/components";
 import { C } from "../ecs/components";
+import { CONFIG } from "../config";
 
 /** Shape of the `bot_ai` component (added by the bot module). */
 interface BotAIComponent {
@@ -97,6 +98,11 @@ export class Leaderboard {
       const tank = world.getComponent<TankComponent>(id, C.Tank);
       if (!tank) continue;
 
+      // Determine color: team color takes priority, then bot color
+      const team = world.getComponent<TeamComponent>(id, C.Team);
+      const teamId = team ? team.id : -1;
+      const teamColor = teamId >= 0 ? (CONFIG.teams.colors[teamId] ?? "#999999") : null;
+
       const isPlayer = playerId !== null && id === playerId;
       if (isPlayer) {
         entries.push({
@@ -104,12 +110,12 @@ export class Leaderboard {
           score: tank.xp,
           level: tank.level,
           isPlayer: true,
-          color: PLAYER_COLOR,
+          color: teamColor ?? PLAYER_COLOR,
         });
         continue;
       }
 
-      // Bot tank: pull name/color from the "bot_ai" component.
+      // Bot tank: pull name from "bot_ai" component, use team color if in team mode.
       if (world.hasComponent(id, "bot")) {
         const ai = world.getComponent<BotAIComponent>(id, "bot_ai");
         entries.push({
@@ -117,7 +123,7 @@ export class Leaderboard {
           score: tank.xp,
           level: tank.level,
           isPlayer: false,
-          color: ai?.color ?? "#999999",
+          color: teamColor ?? ai?.color ?? "#999999",
         });
       }
     }

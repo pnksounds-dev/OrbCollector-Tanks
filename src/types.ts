@@ -4,6 +4,12 @@ export type GameState = "menu" | "playing" | "dead";
 
 export type ShapeKind = "square" | "triangle" | "pentagon";
 
+/** Game mode selection. */
+export type GameMode = "ffa" | "2teams" | "4teams";
+
+/** Team identifiers. -1 = no team (FFA), 0+ = team index. */
+export type TeamId = number;
+
 /** The 8 diep.io stats, indexed by position 0–7. */
 export type StatIndex =
   | 0 // Health Regen

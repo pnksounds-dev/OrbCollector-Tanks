@@ -8,7 +8,7 @@
  */
 
 import { CONFIG } from "../config";
-import type { GameState, StatIndex } from "../types";
+import type { GameState, StatIndex, GameMode } from "../types";
 import { ECWorld, type EntityId } from "../ecs/World";
 import {
   C,
@@ -38,9 +38,6 @@ import { DevPanel } from "../ui/DevPanel";
 import { Minimap } from "../render/Minimap";
 import { Leaderboard } from "../ui/Leaderboard";
 import { StartMenu } from "../ui/StartMenu";
-
-/** Target number of AI bots maintained in the arena. */
-const BOT_TARGET_COUNT = 8;
 
 /** Bot name pool. */
 const BOT_NAMES = [
@@ -85,6 +82,7 @@ export class Game {
 
   playerId: EntityId | null = null;
   playerName: string = "Player";
+  gameMode: GameMode = "2teams";
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -111,8 +109,8 @@ export class Game {
     this.devPanel = new DevPanel(this);
     this.leaderboard = new Leaderboard();
     this.startMenu = new StartMenu(
-      () => {
-        this.startGame();
+      (mode: GameMode) => {
+        this.startGame(mode);
         this.startMenu.hide();
       },
       (muted) => this.storage.setMuted(muted),
@@ -152,41 +150,93 @@ export class Game {
     this.camera.setViewport(w, h);
   }
 
-  /** Start a new game: spawn the player, bots, shapes, and pentagon nest. */
-  startGame(): void {
+  /** Start a new game: spawn the player, bots, shapes, and pentagon nest.
+   *  Game mode determines map size, bot count, and team assignment. */
+  startGame(mode: GameMode = "2teams"): void {
+    this.gameMode = mode;
+    const modeCfg = CONFIG.gameModes[mode];
+    // Override worldHalf for this game mode
+    CONFIG.worldHalf = modeCfg.worldHalf;
+
     this.world = new ECWorld();
-    this.playerId = createTankEntity(this.world, 0, 0);
+    const teamCount = modeCfg.teamCount;
+
+    // Determine player team and spawn position
+    let playerTeam = -1;
+    let playerX = 0;
+    let playerY = 0;
+    if (teamCount > 0) {
+      playerTeam = Math.floor(Math.random() * teamCount);
+      const base = this.getTeamBase(playerTeam, teamCount);
+      playerX = base.x;
+      playerY = base.y;
+    }
+    this.playerId = createTankEntity(this.world, playerX, playerY, playerTeam);
     this.spawns.init(this.world);
     this.pentagonNest.init(this.world);
-    // Spawn initial bots in a ring around the player
-    for (let i = 0; i < BOT_TARGET_COUNT; i++) {
-      const angle = (i / BOT_TARGET_COUNT) * Math.PI * 2;
-      const dist = 800 + Math.random() * 600;
-      const x = Math.cos(angle) * dist;
-      const y = Math.sin(angle) * dist;
-      createBotEntity(
-        this.world,
-        x,
-        y,
-        BOT_NAMES[i % BOT_NAMES.length],
-        BOT_COLORS[i % BOT_COLORS.length],
-      );
+
+    // Spawn bots, distributed across teams
+    const botCount = modeCfg.botCount;
+    for (let i = 0; i < botCount; i++) {
+      let botTeam = -1;
+      let bx = 0;
+      let by = 0;
+      if (teamCount > 0) {
+        botTeam = i % teamCount;
+        const base = this.getTeamBase(botTeam, teamCount);
+        // Spawn near team base with some spread
+        const spread = 400;
+        bx = base.x + (Math.random() - 0.5) * spread * 2;
+        by = base.y + (Math.random() - 0.5) * spread * 2;
+      } else {
+        // FFA: spawn in a ring around the player
+        const angle = (i / botCount) * Math.PI * 2;
+        const dist = 800 + Math.random() * 600;
+        bx = Math.cos(angle) * dist;
+        by = Math.sin(angle) * dist;
+      }
+      // Clamp to arena
+      const half = CONFIG.worldHalf - 150;
+      bx = Math.max(-half, Math.min(half, bx));
+      by = Math.max(-half, Math.min(half, by));
+      const name = BOT_NAMES[i % BOT_NAMES.length] + (teamCount > 0 ? "" : "");
+      const color = teamCount > 0
+        ? CONFIG.teams.colors[botTeam]
+        : BOT_COLORS[i % BOT_COLORS.length];
+      createBotEntity(this.world, bx, by, name, color, botTeam);
     }
+
     // Track game count
     this.storage.incrementGames();
-    // Set player name from start menu
-    if (this.playerName && this.playerName !== "Player") {
-      // Could be used for display in future
-    }
     this.state = "playing";
     this.hud.show();
     this.leaderboard.show();
     this.menu.hideDeath();
   }
 
+  /** Get the base position for a team in the given team count. */
+  private getTeamBase(teamId: number, teamCount: number): { x: number; y: number } {
+    const half = CONFIG.worldHalf * 0.75;
+    if (teamCount === 2) {
+      // Left and right
+      return teamId === 0 ? { x: -half, y: 0 } : { x: half, y: 0 };
+    }
+    if (teamCount === 4) {
+      // Four corners
+      const positions = [
+        { x: -half, y: -half },
+        { x: half, y: -half },
+        { x: -half, y: half },
+        { x: half, y: half },
+      ];
+      return positions[teamId % 4];
+    }
+    return { x: 0, y: 0 };
+  }
+
   /** Respawn the player after death (reset to level 1). */
   respawn(): void {
-    this.startGame();
+    this.startGame(this.gameMode);
   }
 
   /** Return to the start menu (from death screen). */
@@ -213,7 +263,8 @@ export class Game {
     }
 
     this.world.flush();
-    this.renderer.render(this.world, this.camera, this.playerId);
+    const teamCount = CONFIG.gameModes[this.gameMode].teamCount;
+    this.renderer.render(this.world, this.camera, this.playerId, teamCount);
 
     if (this.state === "playing" && this.playerId !== null) {
       this.hud.update();
@@ -242,7 +293,8 @@ export class Game {
     this.level.update(this.world, dt, this.playerId);
 
     // Maintain bot population (remove dead, spawn new)
-    maintainBots(this.world, BOT_TARGET_COUNT, this.playerId);
+    const modeCfg = CONFIG.gameModes[this.gameMode];
+    maintainBots(this.world, modeCfg.botCount, this.playerId, this.gameMode);
 
     // Camera follows player
     const pos = this.world.getComponent<PositionComponent>(this.playerId, C.Position);

@@ -217,3 +217,48 @@ tank-vs-tank combat, a leaderboard, and a start menu.
 ### Balance tuning
 - Spawn invulnerability increased from 2.0s to 3.0s
 - Coins earned = score / 10 (rounded down)
+
+## Phase 5 — Team Game Modes
+
+### Game modes (`src/types.ts`)
+- `GameMode = "ffa" | "2teams" | "4teams"`
+- Default mode: **2teams** (selected by default in the start menu)
+
+### Team component (`src/ecs/components.ts`)
+- `C.Team = "team"` → `TeamComponent { id: number }` (-1 = no team/FFA, 0+ = team index)
+- `createTankEntity` now accepts an optional `teamId` parameter
+- Team colors: 0=blue, 1=red, 2=green, 3=purple (in `CONFIG.teams.colors`)
+
+### Start menu game mode selector (`src/ui/StartMenu.ts`)
+- Three buttons under Play: "2 Teams" (default), "FFA", "4 Teams"
+- `onPlay` callback now receives the selected `GameMode`
+- `getMode()` returns the currently selected mode
+
+### Game mode config (`src/config.ts`)
+- `CONFIG.gameModes[mode]` = `{ worldHalf, botCount, teamCount }`
+- FFA: 2500 half, 8 bots, 0 teams
+- 2teams: 6000 half, 100 bots, 2 teams (50 per team)
+- 4teams: 6000 half, 100 bots, 4 teams (25 per team)
+
+### Team bases (`src/game/Game.ts`)
+- 2 teams: left/right bases at (±half*0.75, 0)
+- 4 teams: four corner bases at (±half*0.75, ±half*0.75)
+- Player spawns at their team's base; bots spawn near their team's base
+- `maintainBots` balances bots across teams (spawns on the team with fewest)
+
+### Team-aware AI (`src/systems/BotAISystem.ts`)
+- `createBotEntity` now accepts `teamId` parameter
+- Bots hunt any enemy tank (not just the player) — `findNearestEnemy()` scans all tanks
+- Same-team tanks are never targeted
+- `maintainBots` accepts `gameMode` and spawns bots on the correct team
+
+### Friendly fire prevention (`src/systems/CombatSystem.ts`)
+- `bulletVsTank`: bullets skip same-team tanks (both teams ≥ 0 and equal)
+- `bodyVsBody`: body ramming skips same-team tanks
+- FFA mode: all tanks are enemies (teamId = -1 for everyone)
+
+### Team-colored rendering (`src/render/Renderer.ts`)
+- Tank body color uses team color when in team mode (overrides bot color)
+- `drawTeamBases()`: semi-transparent colored circles at each team base
+- Minimap: bot dots use team color in team mode
+- Leaderboard: entries use team color in team mode

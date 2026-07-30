@@ -19,6 +19,7 @@ export const C = {
   Bullet: "bullet",
   Player: "player",
   Particle: "particle",
+  Team: "team",
 } as const;
 
 // ---- Component interfaces ----
@@ -100,13 +101,20 @@ export interface PlayerComponent {
   /** Marker component — the player-controlled tank. */
 }
 
+export interface TeamComponent {
+  /** Team index: 0 = blue, 1 = red, 2 = green, 3 = purple. -1 = no team (FFA). */
+  id: number;
+}
+
 // ---- Factory helpers ----
 
-/** Create a player tank at the given world position. */
+/** Create a player tank at the given world position.
+ *  teamId: -1 = no team (FFA), 0+ = team index. */
 export function createTankEntity(
   world: ECWorld,
   x: number,
   y: number,
+  teamId: number = -1,
 ): EntityId {
   const id = world.createEntity();
   const t = CONFIG.tank;
@@ -130,6 +138,7 @@ export function createTankEntity(
     classId: "basic",
   });
   world.addComponent<PlayerComponent>(id, C.Player, {});
+  world.addComponent<TeamComponent>(id, C.Team, { id: teamId });
   return id;
 }
 

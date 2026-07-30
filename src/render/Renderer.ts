@@ -17,6 +17,7 @@ import {
   type ParticleComponent,
 } from "../ecs/components";
 import { BOT, BOT_AI, type BotAIComponent } from "../systems/BotAISystem";
+import type { TeamComponent } from "../ecs/components";
 import { ALPHA } from "../game/AlphaPentagon";
 import { getBarrels } from "../game/TankClasses";
 
@@ -45,7 +46,7 @@ export class Renderer {
   }
 
   /** Render a full frame. */
-  render(world: ECWorld, camera: Camera, playerId: number | null): void {
+  render(world: ECWorld, camera: Camera, playerId: number | null, teamCount: number = 0): void {
     const ctx = this.ctx;
     const w = camera.viewW;
     const h = camera.viewH;
@@ -62,6 +63,7 @@ export class Renderer {
 
     this.drawGrid(camera);
     this.drawArenaBoundary();
+    if (teamCount > 0) this.drawTeamBases(teamCount);
     this.drawShapes(world, camera);
     this.drawBullets(world, camera);
     this.drawParticles(world, camera);
@@ -149,6 +151,46 @@ export class Renderer {
     ctx.lineTo(-half, half);
     ctx.lineTo(-half, half - arm);
     ctx.stroke();
+  }
+
+  /** Draw team base zones — semi-transparent colored circles at each team's base. */
+  private drawTeamBases(teamCount: number): void {
+    const ctx = this.ctx;
+    const half = CONFIG.worldHalf * 0.75;
+    const bases =
+      teamCount === 2
+        ? [
+            { x: -half, y: 0, color: CONFIG.teams.colors[0] },
+            { x: half, y: 0, color: CONFIG.teams.colors[1] },
+          ]
+        : [
+            { x: -half, y: -half, color: CONFIG.teams.colors[0] },
+            { x: half, y: -half, color: CONFIG.teams.colors[1] },
+            { x: -half, y: half, color: CONFIG.teams.colors[2] },
+            { x: half, y: half, color: CONFIG.teams.colors[3] },
+          ];
+
+    const baseRadius = teamCount === 2 ? CONFIG.teams.baseRadius2 : CONFIG.teams.baseRadius4;
+    for (const base of bases) {
+      // Parse hex color to rgba
+      const hex = base.color.replace("#", "");
+      const r = parseInt(hex.substring(0, 2), 16);
+      const g = parseInt(hex.substring(2, 4), 16);
+      const b = parseInt(hex.substring(4, 6), 16);
+
+      // Fill the base zone
+      ctx.fillStyle = `rgba(${r},${g},${b},0.12)`;
+      ctx.beginPath();
+      ctx.arc(base.x, base.y, baseRadius, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Draw border
+      ctx.strokeStyle = `rgba(${r},${g},${b},0.4)`;
+      ctx.lineWidth = 4 / (ctx.getTransform().a || 1);
+      ctx.beginPath();
+      ctx.arc(base.x, base.y, baseRadius, 0, Math.PI * 2);
+      ctx.stroke();
+    }
   }
 
   private drawShapes(world: ECWorld, _camera: Camera): void {
@@ -254,14 +296,18 @@ export class Renderer {
       const isBot = world.hasComponent(id, BOT);
       const isPlayer = id === playerId;
 
-      // Determine colors
+      // Determine colors — team color takes priority, then bot color, then default
       let bodyColor = CONFIG.colors.tankBody;
       let outlineColor = CONFIG.colors.tankOutline;
-      if (isBot) {
+      const team = world.getComponent<TeamComponent>(id, C.Team);
+      if (team && team.id >= 0) {
+        // Team mode: use team color
+        bodyColor = CONFIG.teams.colors[team.id] || CONFIG.colors.tankBody;
+        outlineColor = bodyColor;
+      } else if (isBot) {
         const ai = world.getComponent<BotAIComponent>(id, BOT_AI);
         if (ai) {
           bodyColor = ai.color;
-          // Darken the outline
           outlineColor = ai.color;
         }
       }

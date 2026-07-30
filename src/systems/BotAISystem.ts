@@ -21,7 +21,9 @@ import {
   type PositionComponent,
   type VelocityComponent,
   type TankComponent,
+  type TeamComponent,
 } from "../ecs/components";
+import type { GameMode } from "../types";
 import { STAT_COUNT, STAT_MAX } from "../types";
 import { angleTo, clamp, dist, lerpAngle, normalizeAngle } from "../lib/math";
 
@@ -117,6 +119,7 @@ export function createBotEntity(
   y: number,
   name: string,
   color: string,
+  teamId: number = -1,
 ): EntityId {
   const id = world.createEntity();
   const t = CONFIG.tank;
@@ -164,6 +167,7 @@ export function createBotEntity(
     classId: "basic",
   });
   world.addComponent<BotComponent>(id, BOT, {});
+  world.addComponent<TeamComponent>(id, C.Team, { id: teamId });
   world.addComponent<BotAIComponent>(id, BOT_AI, {
     behavior: "farming",
     targetId: null,
@@ -183,6 +187,8 @@ export function createBotEntity(
 export class BotAISystem {
   /** Cached shape ids for the current update tick (avoid re-querying mid-loop). */
   private shapeIds: EntityId[] = [];
+  /** Cached tank ids for the current update tick. */
+  private tankIds: EntityId[] = [];
   /** Steer angle for the bot currently being processed (stashed for movement). */
   private currentSteerAngle = 0;
 
@@ -190,8 +196,9 @@ export class BotAISystem {
     const botIds = world.query(C.Position, C.Tank, BOT, BOT_AI);
     if (botIds.length === 0) return;
 
-    // Snapshot shape ids up front; spawning bullets dirties the query cache.
+    // Snapshot shape + tank ids up front; spawning bullets dirties the query cache.
     this.shapeIds = world.query(C.Position, C.Shape);
+    this.tankIds = world.query(C.Position, C.Tank, C.Team);
 
     // Player position (may be missing if the player is dead).
     const playerPos = world.getComponent<PositionComponent>(playerId, C.Position);
@@ -227,10 +234,10 @@ export class BotAISystem {
       ai.retargetTimer -= dt;
       if (ai.retargetTimer <= 0) {
         ai.retargetTimer = RETARGET_INTERVAL;
-        this.retarget(world, pos, tank, ai, px, py, distToPlayer, playerAlive);
+        this.retarget(world, botId, pos, tank, ai, px, py, distToPlayer, playerAlive);
       } else {
         // Even without a full retarget, keep the hunting/fleeing state fresh.
-        this.updateBehaviorState(tank, ai, distToPlayer, playerAlive);
+        this.updateBehaviorState(world, botId, tank, ai, pos, distToPlayer, playerAlive);
         // Re-derive the steer angle toward the (possibly moving) target.
         ai.steerAngle = angleTo(pos.x, pos.y, ai.targetX, ai.targetY);
       }
@@ -252,6 +259,7 @@ export class BotAISystem {
   /** Re-evaluate the bot's target and behavior based on the world. */
   private retarget(
     world: ECWorld,
+    botId: EntityId,
     pos: PositionComponent,
     tank: TankComponent,
     ai: BotAIComponent,
@@ -260,12 +268,18 @@ export class BotAISystem {
     distToPlayer: number,
     playerAlive: boolean,
   ): void {
-    this.updateBehaviorState(tank, ai, distToPlayer, playerAlive);
+    this.updateBehaviorState(world, botId, tank, ai, pos, distToPlayer, playerAlive);
+
+    // Find the nearest enemy tank (player or bot on a different team)
+    const enemy = this.findNearestEnemy(world, botId, pos.x, pos.y);
+    const enemyDist = enemy ? enemy.dist : Infinity;
 
     if (ai.behavior === "fleeing") {
-      // Steer directly away from the player.
+      // Steer directly away from the nearest threat.
       ai.targetId = null;
-      const away = angleTo(px, py, pos.x, pos.y);
+      const threatX = enemy ? enemy.x : px;
+      const threatY = enemy ? enemy.y : py;
+      const away = angleTo(threatX, threatY, pos.x, pos.y);
       ai.steerAngle = away;
       ai.targetX = pos.x + Math.cos(away) * 500;
       ai.targetY = pos.y + Math.sin(away) * 500;
@@ -273,13 +287,26 @@ export class BotAISystem {
       return;
     }
 
-    if (ai.behavior === "hunting" && playerAlive) {
-      ai.targetId = null; // tracked via player position, not an entity id
-      ai.targetX = px;
-      ai.targetY = py;
-      ai.steerAngle = angleTo(pos.x, pos.y, px, py);
-      ai.fireFlag = distToPlayer < FIRE_RANGE;
-      return;
+    if (ai.behavior === "hunting") {
+      // Hunt the nearest enemy tank
+      if (enemy && enemyDist < HUNT_ABORT_RANGE) {
+        ai.targetId = null;
+        ai.targetX = enemy.x;
+        ai.targetY = enemy.y;
+        ai.steerAngle = angleTo(pos.x, pos.y, enemy.x, enemy.y);
+        ai.fireFlag = enemyDist < FIRE_RANGE;
+        return;
+      }
+      // Fall back to player if no enemy found
+      if (playerAlive && distToPlayer < HUNT_ABORT_RANGE) {
+        ai.targetId = null;
+        ai.targetX = px;
+        ai.targetY = py;
+        ai.steerAngle = angleTo(pos.x, pos.y, px, py);
+        ai.fireFlag = distToPlayer < FIRE_RANGE;
+        return;
+      }
+      ai.behavior = "farming";
     }
 
     // Farming: find the nearest shape.
@@ -306,10 +333,51 @@ export class BotAISystem {
     }
   }
 
-  /** Update the behavior state from HP ratio and player proximity. */
+  /** Find the nearest enemy tank (different team or any tank in FFA).
+   *  Returns { id, x, y, dist } or null. */
+  private findNearestEnemy(
+    world: ECWorld,
+    botId: EntityId,
+    x: number,
+    y: number,
+  ): { id: EntityId; x: number; y: number; dist: number } | null {
+    const myTeam = world.getComponent<TeamComponent>(botId, C.Team);
+    const myTeamId = myTeam ? myTeam.id : -1;
+    let best: { id: EntityId; x: number; y: number; dist: number } | null = null;
+    let bestDistSq = Infinity;
+
+    for (const tid of this.tankIds) {
+      if (tid === botId) continue;
+      const tpos = world.getComponent<PositionComponent>(tid, C.Position);
+      if (!tpos) continue;
+      // Check if this tank is an enemy
+      const theirTeam = world.getComponent<TeamComponent>(tid, C.Team);
+      const theirTeamId = theirTeam ? theirTeam.id : -1;
+      // In FFA (myTeamId === -1 and theirTeamId === -1), all other tanks are enemies
+      // In team modes, only different teams are enemies
+      if (myTeamId >= 0 && theirTeamId >= 0 && myTeamId === theirTeamId) continue;
+      // Skip dead tanks
+      const theirTank = world.getComponent<TankComponent>(tid, C.Tank);
+      if (theirTank && theirTank.hp <= 0) continue;
+
+      const dx = tpos.x - x;
+      const dy = tpos.y - y;
+      const d2 = dx * dx + dy * dy;
+      if (d2 < bestDistSq) {
+        bestDistSq = d2;
+        best = { id: tid, x: tpos.x, y: tpos.y, dist: Math.sqrt(d2) };
+      }
+    }
+    return best;
+  }
+
+  /** Update the behavior state from HP ratio and enemy proximity. */
   private updateBehaviorState(
+    world: ECWorld,
+    botId: EntityId,
     tank: TankComponent,
     ai: BotAIComponent,
+    pos: PositionComponent,
     distToPlayer: number,
     playerAlive: boolean,
   ): void {
@@ -328,11 +396,15 @@ export class BotAISystem {
       return;
     }
 
-    // Hunting: engage the player if close and strong enough.
+    // Check for nearby enemies (player or other tanks)
+    const enemy = this.findNearestEnemy(world, botId, pos.x, pos.y);
+    const enemyDist = enemy ? enemy.dist : Infinity;
+    const hasNearbyEnemy = (playerAlive && distToPlayer < HUNT_RANGE) || enemyDist < HUNT_RANGE;
+
+    // Hunting: engage enemies if close and strong enough.
     if (ai.behavior === "hunting") {
       if (
-        !playerAlive ||
-        distToPlayer > HUNT_ABORT_RANGE ||
+        !hasNearbyEnemy ||
         tank.level < HUNT_MIN_LEVEL
       ) {
         ai.behavior = "farming";
@@ -342,8 +414,7 @@ export class BotAISystem {
 
     // Farming: consider switching to hunting.
     if (
-      playerAlive &&
-      distToPlayer < HUNT_RANGE &&
+      hasNearbyEnemy &&
       tank.level >= HUNT_MIN_LEVEL &&
       hpRatio > FLEE_HP_RATIO
     ) {
@@ -550,11 +621,14 @@ export function maintainBots(
   world: ECWorld,
   targetCount: number,
   playerId: EntityId,
+  gameMode: GameMode = "ffa",
 ): void {
   // Remove dead bots.
   const botIds = world.query(C.Tank, BOT);
   let alive = 0;
   const toDestroy: EntityId[] = [];
+  // Count alive bots per team
+  const teamCounts: Map<number, number> = new Map();
   for (const id of botIds) {
     const tank = world.getComponent<TankComponent>(id, C.Tank);
     if (!tank || tank.hp <= 0) {
@@ -562,6 +636,9 @@ export function maintainBots(
       continue;
     }
     alive++;
+    const team = world.getComponent<TeamComponent>(id, C.Team);
+    const teamId = team ? team.id : -1;
+    teamCounts.set(teamId, (teamCounts.get(teamId) ?? 0) + 1);
   }
   for (const id of toDestroy) {
     world.destroyEntity(id);
@@ -576,14 +653,50 @@ export function maintainBots(
     py = playerPos.y;
   }
 
+  // Determine team count from game mode
+  const teamCount = gameMode === "ffa" ? 0 : (gameMode === "2teams" ? 2 : 4);
+
   // Spawn up to a few bots per call to avoid bursts.
   const needed = targetCount - alive;
-  const toSpawn = Math.min(needed, 2);
+  const toSpawn = Math.min(needed, 3);
   for (let i = 0; i < toSpawn; i++) {
-    const [x, y] = randomBotSpawnPos(px, py);
+    let botTeam = -1;
+    let bx = 0;
+    let by = 0;
+    if (teamCount > 0) {
+      // Find the team with the fewest bots and spawn on it
+      let minCount = Infinity;
+      for (let t = 0; t < teamCount; t++) {
+        const count = teamCounts.get(t) ?? 0;
+        if (count < minCount) {
+          minCount = count;
+          botTeam = t;
+        }
+      }
+      // Spawn near team base
+      const half = CONFIG.worldHalf * 0.75;
+      const bases = teamCount === 2
+        ? [{ x: -half, y: 0 }, { x: half, y: 0 }]
+        : [{ x: -half, y: -half }, { x: half, y: -half }, { x: -half, y: half }, { x: half, y: half }];
+      const base = bases[botTeam % bases.length];
+      const spread = 400;
+      bx = base.x + (Math.random() - 0.5) * spread * 2;
+      by = base.y + (Math.random() - 0.5) * spread * 2;
+      teamCounts.set(botTeam, (teamCounts.get(botTeam) ?? 0) + 1);
+    } else {
+      const [x, y] = randomBotSpawnPos(px, py);
+      bx = x;
+      by = y;
+    }
+    // Clamp to arena
+    const half = CONFIG.worldHalf - 150;
+    bx = Math.max(-half, Math.min(half, bx));
+    by = Math.max(-half, Math.min(half, by));
     const name = BOT_NAMES[Math.floor(Math.random() * BOT_NAMES.length)];
-    const color = BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)];
-    createBotEntity(world, x, y, name, color);
+    const color = teamCount > 0
+      ? CONFIG.teams.colors[botTeam]
+      : BOT_COLORS[Math.floor(Math.random() * BOT_COLORS.length)];
+    createBotEntity(world, bx, by, name, color, botTeam);
   }
 
   if (toDestroy.length > 0 || toSpawn > 0) {

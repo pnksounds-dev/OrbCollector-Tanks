@@ -6,10 +6,12 @@
  * CSS is injected via a <style> tag — no changes to index.html or style.css.
  *
  * Uses a callback pattern (onPlay, onMuteToggle) so it never imports Game or
- * Storage directly.
+ * Storage directly. The onPlay callback receives the selected game mode.
  */
 
 const STYLE_ID = "start-menu-styles";
+
+import type { GameMode } from "../types";
 
 const MENU_CSS = `
 /* ---- CSS variables (match Undergrowth dark theme) ---- */
@@ -326,6 +328,46 @@ const MENU_CSS = `
   background: #1a1f35;
   color: var(--sm-text);
 }
+
+/* ---- Game mode selector ---- */
+.sm-mode-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sm-mode-label {
+  font-size: 12px;
+  color: var(--sm-muted);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+.sm-mode-buttons {
+  display: flex;
+  gap: 6px;
+}
+.sm-mode-btn {
+  flex: 1;
+  padding: 8px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--sm-panel-border);
+  background: rgba(255,255,255,0.04);
+  color: var(--sm-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  text-align: center;
+}
+.sm-mode-btn:hover {
+  background: rgba(255,255,255,0.09);
+  color: var(--sm-text);
+}
+.sm-mode-btn.sm-active {
+  background: linear-gradient(120deg, var(--sm-accent), var(--sm-accent2));
+  border-color: transparent;
+  color: #fff;
+}
 `;
 
 interface ControlEntry {
@@ -351,12 +393,14 @@ export class StartMenu {
   private settingsSaveBtn: HTMLButtonElement;
   private muteCheckbox: HTMLInputElement;
   private nameInput: HTMLInputElement;
-  private onPlay: () => void;
+  private onPlay: (mode: GameMode) => void;
   private onMuteToggle: (muted: boolean) => void;
   private onNameChange: (name: string) => void;
+  private selectedMode: GameMode = "2teams";
+  private modeButtons: HTMLButtonElement[] = [];
 
   constructor(
-    onPlay: () => void,
+    onPlay: (mode: GameMode) => void,
     onMuteToggle: (muted: boolean) => void,
     initialMuted: boolean,
     onNameChange?: (name: string) => void,
@@ -417,6 +461,37 @@ export class StartMenu {
     this.playBtn.className = "sm-btn sm-btn-primary";
     this.playBtn.textContent = "Play";
     playSection.appendChild(this.playBtn);
+
+    // Game mode selector
+    const modeSection = document.createElement("div");
+    modeSection.className = "sm-section sm-mode-section";
+    const modeLabel = document.createElement("span");
+    modeLabel.className = "sm-mode-label";
+    modeLabel.textContent = "Game Mode";
+    const modeButtons = document.createElement("div");
+    modeButtons.className = "sm-mode-buttons";
+    const modes: { id: GameMode; label: string }[] = [
+      { id: "2teams", label: "2 Teams" },
+      { id: "ffa", label: "FFA" },
+      { id: "4teams", label: "4 Teams" },
+    ];
+    for (const mode of modes) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "sm-mode-btn" + (mode.id === this.selectedMode ? " sm-active" : "");
+      btn.textContent = mode.label;
+      btn.addEventListener("click", () => {
+        this.selectedMode = mode.id;
+        for (const b of this.modeButtons) {
+          b.classList.toggle("sm-active", b === btn);
+        }
+      });
+      this.modeButtons.push(btn);
+      modeButtons.appendChild(btn);
+    }
+    modeSection.appendChild(modeLabel);
+    modeSection.appendChild(modeButtons);
+    playSection.appendChild(modeSection);
     sidebar.appendChild(playSection);
 
     // How to Play collapsible
@@ -522,7 +597,7 @@ export class StartMenu {
 
     // ---- Wire events ----
     this.playBtn.addEventListener("click", () => {
-      this.onPlay();
+      this.onPlay(this.selectedMode);
     });
     howtoToggle.addEventListener("click", () => {
       const open = howtoToggle.classList.toggle("sm-open");
@@ -580,6 +655,11 @@ export class StartMenu {
   /** Get the current nickname. */
   getName(): string {
     return this.nameInput.value.trim() || "Player";
+  }
+
+  /** Get the currently selected game mode. */
+  getMode(): GameMode {
+    return this.selectedMode;
   }
 
   private loadName(): string {
